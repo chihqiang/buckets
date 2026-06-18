@@ -1,0 +1,28 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: buckets-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: buckets
+    volumes:
+      - ./docker/mysql:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: buckets-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_started
+    environment:
+      DATABASE_URL: mysql://root:root@mysql:3306/buckets
+      RUST_LOG: info
+      SUPER_ADMIN_IDS: "1"
+    ports:
+      - "8080:8080"

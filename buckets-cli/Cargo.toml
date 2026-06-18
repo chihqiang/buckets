@@ -1,0 +1,28 @@
+[package]
+name = "buckets-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+buckets-common = { path = "../buckets-common" }
+
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+base64.workspace = true
+hex.workspace = true
+futures.workspace = true
+rand.workspace = true
+md-5.workspace = true
+
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+indicatif = "0.17"
+rpassword = "7"
+tokio-util = { version = "0.7", features = ["io"] }
+argon2.workspace = true
