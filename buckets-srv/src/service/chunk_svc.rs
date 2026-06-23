@@ -16,7 +16,7 @@ use buckets_common::model::api::{ChunkStatusResponse, ChunkUploadResponse};
 use buckets_common::model::db::{TaskStatus, upload_tasks};
 use buckets_common::utils::crypto::{self, SessionSignInput};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, Statement,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -119,19 +119,14 @@ async fn flush_dirty_bitmaps(db: &DatabaseConnection) {
     if !pending_tasks.is_empty() {
         let now = chrono::Utc::now();
         let uuid_strs: Vec<String> = pending_tasks.iter().map(|id| id.to_string()).collect();
-        let placeholders: Vec<String> = uuid_strs.iter().map(|_| "?".to_string()).collect();
-        let sql = format!(
-            "UPDATE upload_tasks SET last_activity_at = ?, updated_at = ? WHERE uuid IN ({})",
-            placeholders.join(",")
-        );
-        let mut values: Vec<sea_orm::Value> = vec![(now.timestamp()).into(), now.into()];
-        values.extend(uuid_strs.into_iter().map(|s| s.into()));
-        if let Err(e) = db
-            .execute(Statement::from_sql_and_values(
-                sea_orm::DatabaseBackend::MySql,
-                &sql,
-                values,
-            ))
+        if let Err(e) = upload_tasks::Entity::update_many()
+            .filter(upload_tasks::Column::Uuid.is_in(uuid_strs))
+            .set(upload_tasks::ActiveModel {
+                last_activity_at: Set(Some(now.timestamp())),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(db)
             .await
         {
             tracing::error!(error = %e, count = pending_tasks.len(), "batch last_activity_at update failed");

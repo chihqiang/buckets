@@ -22,8 +22,7 @@ use buckets_common::model::db::{objects, upload_tasks};
 use buckets_common::utils::path;
 use buckets_common::utils::validate;
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, Statement,
-    TransactionTrait,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -368,12 +367,7 @@ pub async fn merge(
     let object_internal_id = result.last_insert_id;
 
     // 创建用户-对象关联
-    txn.execute(Statement::from_sql_and_values(
-        sea_orm::DatabaseBackend::MySql,
-        "INSERT IGNORE INTO user_objects (user_id, object_id, created_at) VALUES (?, ?, ?)",
-        [user_id.into(), object_internal_id.into(), now.into()],
-    ))
-    .await?;
+    dao::insert_user_object(&txn, user_id, object_internal_id).await?;
 
     // 将任务标记为已完成
     upload_tasks::Entity::update_many()

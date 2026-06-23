@@ -158,12 +158,7 @@ async fn request_timeout_middleware(
 async fn health_check(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<serde_json::Value> {
-    let db_ok = sea_orm::ConnectionTrait::execute(
-        &state.db,
-        sea_orm::Statement::from_string(sea_orm::DatabaseBackend::MySql, "SELECT 1".to_string()),
-    )
-    .await
-    .is_ok();
+    let db_ok = state.db.ping().await.is_ok();
 
     let (disk_available, disk_usage_pct) = buckets_common::utils::validate::disk_space_info();
 

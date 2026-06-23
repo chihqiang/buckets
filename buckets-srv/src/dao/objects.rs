@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use buckets_common::error::AppError;
 use buckets_common::model::db::{ObjectMeta, objects, user_objects};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, Order, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 
 /// 通过 MD5 + file_size 查找对象，用于全局去重（不限特定用户）。
@@ -78,8 +78,8 @@ pub async fn check_user_owns_object_by_uuid(
 
 /// 通过对象的内部 ID 插入用户-对象关联（一个文件可以属于多个用户）。
 /// 如果关联已存在，返回 Ok(()) 不报错。
-pub async fn insert_user_object(
-    db: &DatabaseConnection,
+pub async fn insert_user_object<C: ConnectionTrait>(
+    db: &C,
     user_id: u64,
     object_id: u64,
 ) -> Result<(), AppError> {

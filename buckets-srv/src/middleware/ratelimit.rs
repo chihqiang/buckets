@@ -14,9 +14,12 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use dashmap::DashMap;
 use buckets_common::constant;
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use buckets_common::model::db::upload_tasks;
+use dashmap::DashMap;
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -58,40 +61,39 @@ impl RateLimiter {
     /// 仅统计最近 24 小时内的任务，避免因崩溃重启场景中
     /// 进行中的上传从未递减而导致过时计数器。
     pub async fn init_concurrent_counters(&self) {
-        let stale_cutoff_hours = 24i64;
-        let result = self
-            .db
-            .query_all(Statement::from_sql_and_values(
-                sea_orm::DatabaseBackend::MySql,
-                "SELECT user_id, COUNT(*) as cnt FROM upload_tasks \
-                 WHERE status IN (?, ?, ?) AND updated_at >= DATE_SUB(NOW(), INTERVAL ? HOUR) GROUP BY user_id",
-                [
-                    buckets_common::constant::STATUS_INITIALIZED.into(),
-                    buckets_common::constant::STATUS_UPLOADING.into(),
-                    buckets_common::constant::STATUS_MERGING.into(),
-                    stale_cutoff_hours.into(),
-                ],
-            ))
+        let cutoff = chrono::Utc::now() - chrono::TimeDelta::hours(24);
+        let tasks = upload_tasks::Entity::find()
+            .filter(
+                upload_tasks::Column::Status.is_in([
+                    buckets_common::constant::STATUS_INITIALIZED,
+                    buckets_common::constant::STATUS_UPLOADING,
+                    buckets_common::constant::STATUS_MERGING,
+                ]),
+            )
+            .filter(upload_tasks::Column::UpdatedAt.gte(cutoff))
+            .all(&self.db)
             .await;
-        let rows = match result {
-            Ok(r) => r,
+
+        let tasks = match tasks {
+            Ok(t) => t,
             Err(e) => {
                 tracing::warn!(error = %e, "failed to rebuild concurrent counters from DB");
                 return;
             }
         };
-        for row in &rows {
-            if let (Ok(user_id), Ok(count)) = (
-                row.try_get_by_index::<u64>(0),
-                row.try_get_by_index::<i64>(1),
-            ) {
-                self.concurrent_counters
-                    .insert(user_id, AtomicU32::new(count as u32));
-            }
+
+        let mut user_counts: std::collections::HashMap<u64, u32> =
+            std::collections::HashMap::new();
+        for task in &tasks {
+            *user_counts.entry(task.user_id).or_insert(0) += 1;
         }
-        if !rows.is_empty() {
+        for (user_id, count) in &user_counts {
+            self.concurrent_counters
+                .insert(*user_id, AtomicU32::new(*count));
+        }
+        if !tasks.is_empty() {
             tracing::info!(
-                users = rows.len(),
+                users = user_counts.len(),
                 "rebuilt concurrent upload counters from DB"
             );
         }
@@ -190,20 +192,18 @@ impl RateLimiter {
     /// 相同模式——可以缓存，但每日配额检查频率远比并发上传低，
     /// 因此直接查询数据库是可以接受的。
     async fn check_daily_quota(&self, user_id: u64) -> Result<bool, String> {
-        let result = self
-            .db
-            .query_one(Statement::from_sql_and_values(
-                sea_orm::DatabaseBackend::MySql,
-                "SELECT COUNT(*) FROM upload_tasks WHERE user_id = ? AND created_at >= CURDATE()",
-                [user_id.into()],
-            ))
+        let today = chrono::Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let count = upload_tasks::Entity::find()
+            .filter(upload_tasks::Column::UserId.eq(user_id))
+            .filter(upload_tasks::Column::CreatedAt.gte(today))
+            .count(&self.db)
             .await
             .map_err(|e| e.to_string())?;
-
-        let count: i64 = result
-            .and_then(|r| r.try_get_by_index::<i64>(0).ok())
-            .unwrap_or(0);
-        Ok(count < self.config.daily_upload_quota as i64)
+        Ok(count < self.config.daily_upload_quota as u64)
     }
 }
 
