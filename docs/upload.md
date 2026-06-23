@@ -75,30 +75,25 @@ initialized ──► uploading ──► merging ──► completed
 
 ### `upload_tasks` 表
 
-```sql
-CREATE TABLE upload_tasks (
-    id               BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    uuid             VARCHAR(36)  NOT NULL,
-    object_id        VARCHAR(36)  NOT NULL,
-    file_md5         VARCHAR(32)  NOT NULL,
-    file_size        BIGINT       NOT NULL,
-    chunk_size       INT          NOT NULL,
-    chunk_count      INT          NOT NULL,
-    user_id          BIGINT UNSIGNED NOT NULL,
-    status           VARCHAR(32)  NOT NULL DEFAULT 'initialized',
-    uploaded_bitmap  JSON         NOT NULL DEFAULT ('[]'),
-    last_activity_at BIGINT       NULL,
-    created_at       TIMESTAMP(6) NOT NULL,
-    updated_at       TIMESTAMP(6) NOT NULL,
-    expires_at       TIMESTAMP(6) NOT NULL,
-    UNIQUE INDEX idx_upload_tasks_uuid (uuid),
-    INDEX idx_upload_tasks_md5 (file_md5),
-    INDEX idx_upload_tasks_user (user_id),
-    INDEX idx_upload_tasks_expires (expires_at),
-    INDEX idx_upload_tasks_status_expires (status, expires_at),
-    CONSTRAINT fk_upload_tasks_user FOREIGN KEY (user_id) REFERENCES users(id)
-);
-```
+DDL 由 sea-orm-migration 自动生成，逻辑结构如下（SQLite/MySQL 通用）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT (PK) | 自增主键 |
+| uuid | VARCHAR(36) (UNIQUE) | UUID，上传任务标识 |
+| object_id | VARCHAR(36) | 关联对象 UUID |
+| file_md5 | VARCHAR(64) | 文件 MD5 |
+| file_size | BIGINT | 文件大小（字节） |
+| chunk_size | INT | 分片大小（字节） |
+| chunk_count | INT | 总分片数 |
+| user_id | BIGINT | 上传用户 ID |
+| status | VARCHAR(32) | `initialized` / `uploading` / `merging` / `completed` / `failed` / `expired` |
+| uploaded_bitmap | TEXT | 已上传分片位图（JSON Vec\<u64\>） |
+| last_activity_at | BIGINT | 最后活跃时间戳（Unix 秒） |
+| created_at / updated_at | TIMESTAMP | 创建 / 更新时间 |
+| expires_at | TIMESTAMP | 过期时间 |
+
+索引：`idx_uuid` (UNIQUE), `idx_md5`, `idx_user`, `idx_expires`, `idx_status_expires`
 
 ### `UploadTask` 结构体
 
@@ -146,41 +141,36 @@ pub fn parse_bitmap(&self) -> Vec<u64> {
 
 合并完成后写入的最终对象表：
 
-```sql
-CREATE TABLE objects (
-    id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    uuid          VARCHAR(36)  NOT NULL,
-    name          VARCHAR(1024) NOT NULL,
-    size          BIGINT       NOT NULL,
-    md5           VARCHAR(64)  NOT NULL,
-    content_type  VARCHAR(256),
-    extension     VARCHAR(64),
-    bucket        VARCHAR(256) NOT NULL DEFAULT 'default',
-    storage_path  VARCHAR(1024),
-    image_width   INT          NOT NULL DEFAULT 0,
-    image_height  INT          NOT NULL DEFAULT 0,
-    image_type    VARCHAR(32)  NOT NULL DEFAULT '',
-    status        VARCHAR(32)  NOT NULL DEFAULT 'active',
-    created_at    TIMESTAMP(6) NOT NULL,
-    updated_at    TIMESTAMP(6) NOT NULL,
-    UNIQUE INDEX idx_objects_uuid (uuid),
-    INDEX idx_objects_md5 (md5)
-);
-```
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT (PK) | 自增主键 |
+| uuid | VARCHAR(36) (UNIQUE) | UUID 业务标识 |
+| name | VARCHAR(1024) | 原始文件名 |
+| size | BIGINT | 文件大小（字节） |
+| md5 | VARCHAR(64) | 文件 MD5 |
+| content_type | VARCHAR(256) | MIME 类型 |
+| extension | VARCHAR(64) | 文件扩展名 |
+| bucket | VARCHAR(256) | 存储桶 |
+| storage_path | VARCHAR(1024) | 物理存储路径 |
+| image_width/height/type | INT/VARCHAR | 图片信息 |
+| upload_method | VARCHAR(32) | 上传方式: `chunk` / `tus` |
+| status | VARCHAR(32) | `active` / `deleted` |
+| created_at / updated_at | TIMESTAMP | 创建 / 更新时间 |
+
+索引：`idx_uuid` (UNIQUE), `idx_md5`
 
 ### `user_objects` 关联表
 
 多对多关系，支持同一文件被多个用户引用：
 
-```sql
-CREATE TABLE user_objects (
-    id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id    BIGINT UNSIGNED NOT NULL,
-    object_id  BIGINT UNSIGNED NOT NULL,
-    created_at TIMESTAMP(6) NOT NULL,
-    UNIQUE INDEX idx_user_objects (user_id, object_id)
-);
-```
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | BIGINT (PK) | 自增主键 |
+| user_id | BIGINT | 用户 ID |
+| object_id | BIGINT | 对象 ID |
+| created_at | TIMESTAMP | 关联创建时间 |
+
+唯一索引：`(user_id, object_id)`
 
 ---
 
@@ -373,19 +363,16 @@ Content-Type: application/json
 2. 磁盘空间检查 (spawn_blocking 避免阻塞 runtime)
 3. 软限制告警 (超过 1 TiB 记录 warn 日志)
 4. 全局去重:
-   SELECT * FROM objects WHERE md5 = ? AND bucket = ? AND status = 'active' AND size = ?
-    → 找到 → 插入 user_objects 关联 → 返回 exists=true (秒传)
+   ORM 查询 objects（按 md5 + bucket + status = 'active' + size 精确匹配）
+    → 找到 → ORM 插入 user_objects 关联 → 返回 exists=true (秒传)
 5. 断点续传检查:
-   SELECT * FROM upload_tasks
-   WHERE file_md5 = ? AND user_id = ? AND chunk_size = ?
-   AND status NOT IN ('completed', 'expired', 'failed')
-   ORDER BY created_at DESC LIMIT 1
+   ORM 查询 upload_tasks（按 file_md5 + user_id + chunk_size，status 不在 completed/expired/failed 中）
    → 找到 → 校验 staging 目录存在 → 解析 bitmap → 返回已上传 chunks
    → staging 目录不存在 → 回退到新建任务
 6. 新建任务:
    - 生成 object_id
    - 动态过期时间 (同 STS 逻辑)
-   - INSERT INTO upload_tasks
+   - ORM insert 创建 upload_tasks 记录
    → 返回空 uploaded_chunks
 ```
 
@@ -519,7 +506,7 @@ struct TaskBitmap {
 **flush 机制**：
 - 后台定时任务每 5 秒触发 `flush_dirty_bitmaps()`
 - 使用 `DIRTY_TASK_IDS` HashSet 跟踪需要 flush 的 task，避免全量遍历 DashMap
-- 同时批量更新 `last_activity_at`（多个 task 合并为一条 SQL）
+- 同时批量更新 `last_activity_at`（多个 task 合并为一次 ORM 批量操作）
 - 所有 chunk 上传完毕的 task 从缓存中移除
 
 **缓存淘汰**：
@@ -626,12 +613,12 @@ Content-Type: application/json
 
 11. 图像尺寸检测 (spawn_blocking 读取 magic bytes)
 
-12. DB 事务写入:
-    BEGIN
-    INSERT INTO objects (...)
-    INSERT INTO user_objects (user_id, object_id)
-    UPDATE upload_tasks SET status = 'completed'
-    COMMIT
+12. ORM 事务写入:
+    ORM 事务内依次执行:
+       object::ActiveModel insert
+       user_object::ActiveModel insert
+       upload_task::ActiveModel update (status = 'completed')
+    事务提交（sea-orm TransactionTrait）
 
 13. 清理
     - 从 bitmap 缓存中移除 task
@@ -861,9 +848,9 @@ pub fn start_bitmap_flush_task(db, cancellation) {
 ```
 
 **批量 flush 策略**：
-1. 收集 `PENDING_ACTIVITY` → 一条 SQL 批量更新多个 task 的 `last_activity_at`
+1. 收集 `PENDING_ACTIVITY` → 一次 ORM 批量更新多个 task 的 `last_activity_at`
 2. 收集 `DIRTY_TASK_IDS` → 只遍历 dirty 的 task（避免全量 DashMap 遍历）
-3. 每个 dirty task → `UPDATE upload_tasks SET uploaded_bitmap = ?`
+3. 每个 dirty task → ORM `update_many()` 更新 `uploaded_bitmap`
 4. 全部上传完毕的 task → 从缓存移除
 
 ### 优雅关闭

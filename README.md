@@ -29,6 +29,7 @@ buckets/
 ├── .env.example              # 环境变量模板
 ├── buckets-common/       # 公共基础库（lib）
 │   ├── src/
+│   │   ├── db.rs         # 数据库连接池（统一 create_pool，支持 SQLite/MySQL）
 │   │   ├── error.rs      # 统一错误类型 AppError
 │   │   ├── model/        # 共享数据模型（API DTO）+ sea-orm 实体
 │   │   └── utils/        # 工具函数（crypto, path, validate）
@@ -86,7 +87,7 @@ buckets/
 
 | 子包 | 类型 | 技术栈 | 职责 |
 |------|------|--------|------|
-| `buckets-common` | lib | serde, chrono, uuid, sha2, hmac, md-5, base64, argon2, axum, sea-orm, thiserror | 共享模型、统一错误体系、sea-orm 实体、全局常量、工具函数（crypto/validate/path） |
+| `buckets-common` | lib | serde, chrono, uuid, sha2, hmac, md-5, base64, argon2, axum, sea-orm/`sqlx-mysql` `sqlx-sqlite`, thiserror | 共享模型、统一错误体系、sea-orm 实体、数据库连接池（统一 create_pool，支持 SQLite/MySQL）、全局常量、工具函数（crypto/validate/path） |
 | `buckets-srv` | bin | axum 0.8, tokio, sea-orm 1.x, tower-http, dotenvy, dashmap, jsonwebtoken | HTTP API 服务、JWT + Basic Auth 双模认证、分片管理、异步合并、流式写入、GC 清理、速率限制、**前端静态文件分发** |
 | `buckets-cli` | bin | clap 4, reqwest 0.12, tokio, indicatif, rpassword | 文件预处理、流式分片上传、进度展示、断点续传、凭证管理 |
 
@@ -104,7 +105,8 @@ buckets-srv ─────────┘
 ```bash
 # 1. 配置环境变量
 cp .env.example .env
-# 编辑 .env，修改 DATABASE_URL、ADMIN_PASSWORD 等配置
+# 默认使用 SQLite（sqlite:buckets.db），开箱即用无需安装 MySQL
+# 编辑 .env，修改 ADMIN_PASSWORD 等配置
 
 # 2. 初始化数据库（自动建表 + 创建 admin 用户）
 cargo run --release -p migration
@@ -138,6 +140,8 @@ cargo run --release -p buckets-cli -- \
     --password buckets \
     upload ./large-file.mp4 --resume
 ```
+
+默认使用 SQLite 数据库（`sqlite:buckets.db`），首次 migration 自动创建，无需额外配置。也可切换为 MySQL：修改 `DATABASE_URL=mysql://root:root@localhost:3306/buckets`。
 
 Seed 用户 `admin@buckets.local` / `buckets` 由 migration 在首次运行时自动创建（密码使用 argon2 哈希，通过 `ADMIN_PASSWORD` 环境变量配置，默认 `buckets`）。
 

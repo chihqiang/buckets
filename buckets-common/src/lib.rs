@@ -8,6 +8,7 @@
 //! - **utils**: 加密签名、哈希、路径辅助、文件验证、密码哈希
 
 pub mod constant;
+pub mod db;
 pub mod error;
 pub mod model;
 pub mod utils;

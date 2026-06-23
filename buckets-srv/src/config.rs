@@ -159,12 +159,16 @@ fn validate_port(port: u16) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// 验证 DATABASE_URL 具有可识别的 MySQL 方案。
+/// 验证 DATABASE_URL 具有可识别的方案。
 fn validate_database_url(url: &str) -> anyhow::Result<()> {
-    if !url.starts_with("mysql://") && !url.starts_with("mysqlx://") {
+    if !url.starts_with("mysql://")
+        && !url.starts_with("mysqlx://")
+        && !url.starts_with("sqlite://")
+        && !url.starts_with("sqlite:")
+    {
         anyhow::bail!(
-            "DATABASE_URL must start with 'mysql://' or 'mysqlx://', got: {}...",
-            &url[..url.len().min(20)]
+            "DATABASE_URL must start with 'mysql://', 'mysqlx://', or 'sqlite://', got: {}...",
+            &url[..url.len().min(30)]
         );
     }
     Ok(())

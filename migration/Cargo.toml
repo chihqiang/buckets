@@ -12,7 +12,7 @@ name = "migration"
 path = "src/main.rs"
 
 [dependencies]
-sea-orm-migration = { version = "1", features = ["runtime-tokio-rustls", "sqlx-mysql"] }
+sea-orm-migration.workspace = true
 buckets-common = { path = "../buckets-common" }
 chrono = { workspace = true }
 uuid = { workspace = true }

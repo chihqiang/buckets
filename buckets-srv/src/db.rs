@@ -1,24 +1,12 @@
 //! 共享数据库工具——中间件、主程序和 Web/网关两层使用的连接创建和认证辅助函数。
 
+pub use buckets_common::db::create_pool;
+
 use buckets_common::constant;
 use buckets_common::error::AppError;
 use buckets_common::model::db::users;
 use buckets_common::utils::password;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-
-// ============================================================================
-// 连接创建
-// ============================================================================
-
-/// 通过 sea-orm 创建 MySQL 数据库连接池。
-pub async fn create_pool(
-    database_url: &str,
-    _max_conn: u32,
-) -> Result<DatabaseConnection, AppError> {
-    sea_orm::Database::connect(database_url)
-        .await
-        .map_err(|e| AppError::DatabaseError(format!("connect: {}", e)))
-}
 
 // ============================================================================
 // 共享类型

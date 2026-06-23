@@ -11,7 +11,7 @@ pub const ENV_DB_MAX_CONN: &str = "DB_MAX_CONN";
 // 默认值
 // ============================================================================
 
-pub const DEFAULT_DATABASE_URL: &str = "mysql://root:root@localhost:3306/buckets";
+pub const DEFAULT_DATABASE_URL: &str = "sqlite:buckets.db";
 pub const DEFAULT_DB_MAX_CONN: u32 = 20;
 
 // ============================================================================

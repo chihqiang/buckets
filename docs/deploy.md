@@ -17,7 +17,8 @@
 | 组件 | 版本要求 | 说明 |
 |------|----------|------|
 | Rust | 1.85+ | 编译环境（Rust 2024 edition） |
-| MySQL | 8.0+ | 元数据存储，需要 InnoDB 引擎 |
+| MySQL | 8.0+ | 元数据存储（可选），需要 InnoDB 引擎 |
+| SQLite | 3.x（内嵌） | 默认数据库，开箱即用，无需单独安装 |
 | 操作系统 | Linux / macOS | Windows 通过 WSL2 也可运行 |
 
 > **注意**：当前版本不依赖 Redis，所有会话缓存和速率限制数据通过 DashMap 内存实现。
@@ -48,25 +49,28 @@ cargo build --release -p buckets-cli       # 仅客户端
 
 ### 2.2 初始化数据库
 
+默认使用 SQLite，开箱即用无需任何数据库服务器。如需 MySQL，先创建数据库：
+
 ```bash
-# 创建数据库
+# SQLite（默认）— 无需额外操作，migration 自动创建 buckets.db
+# MySQL — 需先创建数据库
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS buckets CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-
-# 运行迁移（自动建表 + 创建 seed admin 用户）
-cargo run --release -p migration
-
-# 验证表创建成功
-mysql -u root -p buckets -e "SHOW TABLES;"
-# 预期输出:
-# +----------------------+
-# | Tables_in_buckets    |
-# +----------------------+
-# | users                |
-# | objects              |
-# | user_objects         |
-# | upload_tasks         |
-# +----------------------+
 ```
+
+运行迁移（自动建表 + 创建 seed admin 用户）：
+
+```bash
+cargo run --release -p migration
+```
+
+迁移完成后表结构如下（两种后端相同）：
+
+| 表名 | 说明 |
+|------|------|
+| `users` | 系统用户 |
+| `objects` | 文件对象元数据 |
+| `user_objects` | 用户-对象关联（多对多） |
+| `upload_tasks` | 上传任务与进度 |
 
 > 迁移使用 sea-orm-migration 框架，DDL 定义在 `migration/src/m20220101_000001_create_tables.rs`。种子管理员密码通过 `ADMIN_PASSWORD` 环境变量配置（默认 `buckets`）。
 
@@ -82,7 +86,13 @@ mysql -u root -p buckets -e "SHOW TABLES;"
 cp .env.example .env
 ```
 
-**最小配置**（只需数据库）：
+**最小配置**（默认 SQLite，无需修改）：
+
+```bash
+DATABASE_URL="sqlite:buckets.db"
+```
+
+如使用 MySQL，改为：
 
 ```bash
 DATABASE_URL="mysql://root:root@localhost:3306/buckets"
@@ -96,8 +106,8 @@ HOST=0.0.0.0              # 监听地址（默认 0.0.0.0）
 PORT=8080                 # 监听端口（默认 8080）
 
 # 数据库
-DATABASE_URL="mysql://root:root@localhost:3306/buckets"
-DB_MAX_CONN=20            # 连接池大小（默认 20，最小 2）
+DATABASE_URL="sqlite:buckets.db"
+DB_MAX_CONN=20            # 连接池大小（默认 20，最小 2，SQLite 下仅使用 1 个连接）
 
 # CORS
 CORS_ALLOWED_ORIGINS=     # 逗号分隔，空=允许所有
@@ -232,7 +242,18 @@ Dockerfile 使用三段式构建：
 # 创建数据目录
 mkdir -p /data/buckets/{objects,staging,cache}
 
-# 运行容器（需先准备 MySQL）
+# SQLite（默认，无需外部数据库）
+docker run -d \
+    --name buckets-app \
+    --restart unless-stopped \
+    -p 8080:8080 \
+    -e DATABASE_URL="sqlite:/home/buckets/data/buckets.db" \
+    -e SUPER_ADMIN_IDS=1 \
+    -e RUST_LOG=info \
+    -v /data/buckets:/home/buckets/data \
+    buckets:latest
+
+# MySQL（需先准备 MySQL 实例）
 docker run -d \
     --name buckets-app \
     --restart unless-stopped \
@@ -261,7 +282,7 @@ docker logs -f buckets-app
 |------|--------|------|------|
 | `HOST` | `0.0.0.0` | 否 | 监听地址，生产建议 `127.0.0.1` + Nginx |
 | `PORT` | `8080` | 否 | 监听端口 |
-| `DATABASE_URL` | `mysql://root:root@localhost:3306/buckets` | **是** | MySQL 连接字符串 |
+| `DATABASE_URL` | `sqlite:buckets.db` | **是** | 数据库连接串，`sqlite:buckets.db`（SQLite）或 `mysql://user:pass@host:port/db`（MySQL） |
 | `DB_MAX_CONN` | `20` | 否 | 数据库连接池最大连接数（最小 2） |
 | `CORS_ALLOWED_ORIGINS` | (空=允许所有) | 否 | 允许的来源域名，逗号分隔 |
 | `SUPER_ADMIN_IDS` | (空) | 否 | 超级管理员用户 ID，逗号分隔 |
@@ -279,9 +300,13 @@ docker logs -f buckets-app
 ### 数据库连接串格式
 
 ```
-mysql://[user][:password]@[host][:port]/[database][?params]
+SQLite: sqlite:buckets.db                    # 相对路径，文件位于工作目录
+        sqlite:///data/buckets/buckets.db    # 绝对路径
+
+MySQL:  mysql://[user][:password]@[host][:port]/[database][?params]
 
 示例:
+sqlite:buckets.db
 mysql://root:root@localhost:3306/buckets
 mysql://admin:secret@192.168.1.100:3306/buckets?charset=utf8mb4
 ```
@@ -414,8 +439,8 @@ server {
 | 分片大小 | 4-8MB | 默认 8MB，网络差可调小，带宽充足可调大（最大 256MB） |
 | 并发数 | 4-8 | CLI `--parallel` 参数，按带宽调整，最大 16 |
 | `MAX_CHUNK_SIZE` | 256MB | 服务端最大分片限制 |
-| MySQL `innodb_buffer_pool_size` | 物理内存 70% | InnoDB 缓存 |
-| MySQL `max_allowed_packet` | 64MB | 允许大分片传输 |
+| MySQL `innodb_buffer_pool_size` | 物理内存 70% | InnoDB 缓存（仅 MySQL） |
+| MySQL `max_allowed_packet` | 64MB | 允许大分片传输（仅 MySQL） |
 
 ### 存储空间规划
 
@@ -431,7 +456,10 @@ data/
 ### 数据备份
 
 ```bash
-# 数据库备份
+# SQLite 数据库备份
+sqlite3 buckets.db ".backup buckets_$(date +%Y%m%d).db"
+
+# MySQL 数据库备份
 mysqldump -u root -p buckets > buckets_$(date +%Y%m%d).sql
 
 # 对象文件备份（使用 rsync）
@@ -467,8 +495,11 @@ kill -TERM $(pidof buckets-srv)
 # /etc/systemd/system/buckets-srv.service
 [Unit]
 Description=buckets Server Service
-After=network.target mysql.service
-Wants=mysql.service
+After=network.target
+# SQLite: 无需数据库服务
+# MySQL:  取消下面注释
+# After=network.target mysql.service
+# Wants=mysql.service
 
 [Service]
 Type=simple
@@ -503,9 +534,10 @@ sudo systemctl status buckets-srv
 **Q: 服务启动失败，提示数据库连接失败**
 ```
 检查: DATABASE_URL 是否正确
-检查: MySQL 是否运行: systemctl status mysql
-检查: 网络连通性: telnet mysql-host 3306
-检查: 数据库用户权限
+检查: SQLite — buckets.db 所在目录是否可写
+检查: MySQL — 是否运行: systemctl status mysql
+检查: MySQL — 网络连通性: telnet mysql-host 3306
+检查: MySQL — 数据库用户权限
 ```
 
 **Q: 上传到 99% 卡住**

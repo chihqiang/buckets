@@ -293,7 +293,7 @@ POST /api/v1/upload/sts
 **签名算法**：
 ```
 message = "session:{user_id}:{task_id}:{file_md5}:{chunk_size}:{timestamp}:{salt}"
-secret_key = users.secret_key（64 字符 hex，SQL 预设）
+secret_key = users.secret_key（64 字符 hex，数据库预设）
 signature = HMAC-SHA256(secret_key, message)
 ```
 
@@ -565,7 +565,7 @@ POST /api/v1/upload/merge
    ├── BufWriter(1MB) 流式写入合并文件: data/objects/{obj_id_prefix}/{obj_id}
    ├── 边写边计算 MD5
    ├── 校验 computed_md5 == file_md5
-    │   ├── 匹配 → INSERT INTO buckets → status = 'completed'
+     │   ├── 匹配 → ORM 插入 objects + user_objects → status = 'completed'
    │   └── 不匹配 → status = 'failed'，清理合并文件
    ├── 清理暂存目录: rm -rf data/staging/{task_id}
    └── 更新 upload_tasks status
