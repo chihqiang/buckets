@@ -38,10 +38,10 @@ struct UserBucket {
 #[derive(Clone)]
 pub struct RateLimiter {
     config: RateLimitConfig,
-    buckets: Arc<DashMap<u64, UserBucket>>,
+    buckets: Arc<DashMap<i64, UserBucket>>,
     /// 每用户的内存并发上传计数器。
     /// 避免每次请求查询数据库获取活跃任务数。
-    concurrent_counters: Arc<DashMap<u64, AtomicU32>>,
+    concurrent_counters: Arc<DashMap<i64, AtomicU32>>,
     db: DatabaseConnection,
 }
 
@@ -82,7 +82,7 @@ impl RateLimiter {
             }
         };
 
-        let mut user_counts: std::collections::HashMap<u64, u32> =
+        let mut user_counts: std::collections::HashMap<i64, u32> =
             std::collections::HashMap::new();
         for task in &tasks {
             *user_counts.entry(task.user_id).or_insert(0) += 1;
@@ -127,7 +127,7 @@ impl RateLimiter {
     }
 
     /// 使用令牌桶算法检查请求速率
-    fn check_request_rate(&self, user_id: u64) -> bool {
+    fn check_request_rate(&self, user_id: i64) -> bool {
         let mut bucket = self.buckets.entry(user_id).or_insert_with(|| UserBucket {
             tokens: self.config.burst_size,
             last_refill: Instant::now(),
@@ -151,7 +151,7 @@ impl RateLimiter {
 
     /// 增加用户的并发上传计数器。
     /// 创建新上传任务时调用。
-    pub fn increment_concurrent(&self, user_id: u64) {
+    pub fn increment_concurrent(&self, user_id: i64) {
         let counter = self
             .concurrent_counters
             .entry(user_id)
@@ -166,7 +166,7 @@ impl RateLimiter {
     ///（例如合并完成和 GC 之间的竞态导致重复递减），
     /// 没有下限的 `fetch_sub` 可能使计数器变为负数，
     /// 导致所有后续上传被拒绝。
-    pub fn decrement_concurrent(&self, user_id: u64) {
+    pub fn decrement_concurrent(&self, user_id: i64) {
         let counter = self
             .concurrent_counters
             .entry(user_id)
@@ -180,7 +180,7 @@ impl RateLimiter {
 
     /// 使用内存计数器检查并发上传限制。
     /// 定期从数据库同步以保持准确性。
-    fn check_concurrent_uploads(&self, user_id: u64) -> bool {
+    fn check_concurrent_uploads(&self, user_id: i64) -> bool {
         let counter = self
             .concurrent_counters
             .entry(user_id)
@@ -191,7 +191,7 @@ impl RateLimiter {
     /// 通过统计今天创建的任务数检查每日配额。
     /// 相同模式——可以缓存，但每日配额检查频率远比并发上传低，
     /// 因此直接查询数据库是可以接受的。
-    async fn check_daily_quota(&self, user_id: u64) -> Result<bool, String> {
+    async fn check_daily_quota(&self, user_id: i64) -> Result<bool, String> {
         let today = chrono::Utc::now()
             .date_naive()
             .and_hms_opt(0, 0, 0)
@@ -314,7 +314,7 @@ mod tests {
     fn test_concurrent_upload_counter() {
         use std::sync::atomic::AtomicU32;
         let config = RateLimitConfig::default();
-        let counters: Arc<DashMap<u64, AtomicU32>> = Arc::new(DashMap::new());
+        let counters: Arc<DashMap<i64, AtomicU32>> = Arc::new(DashMap::new());
 
         // 初始为 0，应通过
         let counter = counters.entry(1).or_insert_with(|| AtomicU32::new(0));
@@ -334,8 +334,8 @@ mod tests {
             daily_upload_quota: 50,
         };
 
-        let buckets: Arc<DashMap<u64, UserBucket>> = Arc::new(DashMap::new());
-        let user_id = 42u64;
+        let buckets: Arc<DashMap<i64, UserBucket>> = Arc::new(DashMap::new());
+        let user_id = 42i64;
 
         buckets.insert(
             user_id,
@@ -378,9 +378,9 @@ mod tests {
             daily_upload_quota: 50,
         };
 
-        let buckets: Arc<DashMap<u64, UserBucket>> = Arc::new(DashMap::new());
+        let buckets: Arc<DashMap<i64, UserBucket>> = Arc::new(DashMap::new());
 
-        let check = |buckets: &DashMap<u64, UserBucket>, uid: u64, cfg: &RateLimitConfig| -> bool {
+        let check = |buckets: &DashMap<i64, UserBucket>, uid: i64, cfg: &RateLimitConfig| -> bool {
             let mut bucket = buckets.entry(uid).or_insert_with(|| UserBucket {
                 tokens: cfg.burst_size,
                 last_refill: Instant::now(),

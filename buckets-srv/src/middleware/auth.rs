@@ -45,7 +45,7 @@ use std::time::{Duration, Instant};
 
 /// 缓存的已验证凭据：hash(email:password) -> (user_id, expires_at)
 pub struct AuthCacheEntry {
-    user_id: u64,
+    user_id: i64,
     expires_at: Instant,
 }
 
@@ -80,7 +80,7 @@ pub fn new_secret_key_cache() -> SecretKeyCache {
 }
 
 /// 查找 `user_id` 的缓存密钥。未命中或过期时返回 `None`。
-pub fn get_cached_secret_key(cache: &SecretKeyCache, user_id: u64) -> Option<String> {
+pub fn get_cached_secret_key(cache: &SecretKeyCache, user_id: i64) -> Option<String> {
     let key = user_id.to_string();
     cache.get(&key).and_then(|entry| {
         if entry.expires_at > Instant::now() {
@@ -92,7 +92,7 @@ pub fn get_cached_secret_key(cache: &SecretKeyCache, user_id: u64) -> Option<Str
 }
 
 /// 将密钥以默认 TTL 插入缓存。
-pub fn cache_secret_key(cache: &SecretKeyCache, user_id: u64, secret_key: String) {
+pub fn cache_secret_key(cache: &SecretKeyCache, user_id: i64, secret_key: String) {
     let key = user_id.to_string();
     let ttl = Duration::from_secs(constant::AUTH_CACHE_TTL_SECS);
     cache.insert(
@@ -221,7 +221,7 @@ async fn verify_bearer_token(
     token: &str,
     db: &Option<DatabaseConnection>,
     secret_key_cache: &Option<SecretKeyCache>,
-) -> Option<(u64, String)> {
+) -> Option<(i64, String)> {
     // 解码（未经验证的）头部以提取 `kid`（user_id）并验证算法。
     // 这是我们做的唯一预验证解析。
     let header = jsonwebtoken::decode_header(token).ok()?;
@@ -231,7 +231,7 @@ async fn verify_bearer_token(
 
     // 从 `kid`（密钥 ID）头部字段提取 user_id。
     // 由 `generate_access_token` 生成的访问令牌始终包含此项。
-    let user_id: u64 = header.kid.as_deref()?.parse().ok()?;
+    let user_id: i64 = header.kid.as_deref()?.parse().ok()?;
 
     // 先尝试缓存，然后回退到数据库获取密钥。
     let secret_key = if let Some(cache) = secret_key_cache {
@@ -281,7 +281,7 @@ pub fn start_auth_cache_cleaner(
 
 /// 提取超级管理员用户 ID。仅在 `SUPER_ADMIN_IDS` 中的用户通过。
 #[derive(Debug, Clone, Copy)]
-pub struct AdminUserId(#[allow(dead_code)] pub u64);
+pub struct AdminUserId(#[allow(dead_code)] pub i64);
 
 impl<S> FromRequestParts<S> for AdminUserId
 where
@@ -501,7 +501,7 @@ async fn finish_auth(
     mut parts: Parts,
     body: axum::body::Body,
     next: Next,
-    user_id: u64,
+    user_id: i64,
     is_admin: bool,
     path: &str,
 ) -> Result<Response, Response> {

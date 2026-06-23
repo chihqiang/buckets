@@ -285,7 +285,7 @@ pub fn start_bitmap_cache_cleanup(cancellation: CancellationToken) {
 pub async fn upload_chunk_binary_stream(
     db: &DatabaseConnection,
     secret_key_cache: &crate::middleware::auth::SecretKeyCache,
-    user_id: u64,
+    user_id: i64,
     task_id: uuid::Uuid,
     chunk_index: u32,
     chunk_md5: String,
@@ -501,7 +501,7 @@ async fn check_session_liveness(
 /// 返回已上传的分块数和缺失的分块索引列表。
 pub async fn chunk_status(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     task_id: uuid::Uuid,
 ) -> Result<ChunkStatusResponse, AppError> {
     let task = dao::find_upload_task(db, task_id)

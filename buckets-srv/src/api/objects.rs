@@ -19,7 +19,7 @@ pub struct FileListQueryExt {
     pub page: Option<u64>,
     pub page_size: Option<u64>,
     /// 按用户 ID 过滤（仅超级管理员；普通用户忽略）。
-    pub user_id: Option<u64>,
+    pub user_id: Option<i64>,
 }
 
 fn into_object_info(f: ObjectRow) -> ObjectInfo {

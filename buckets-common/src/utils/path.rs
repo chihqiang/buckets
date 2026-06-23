@@ -9,7 +9,7 @@ use crate::constant;
 /// 格式：`data/objects/{userId}/{YYYYMMDD}/{uuid}.{ext}`
 pub fn get_object_storage_path(
     object_id: &Uuid,
-    user_id: u64,
+    user_id: i64,
     year: i32,
     month: u32,
     day: u32,

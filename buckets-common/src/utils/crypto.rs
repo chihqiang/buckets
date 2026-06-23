@@ -27,7 +27,7 @@ type HmacSha256 = Hmac<Sha256>;
 /// 会话级别签名的输入（覆盖整个上传，不是每个分块）。
 #[derive(Debug, Clone)]
 pub struct SessionSignInput {
-    pub user_id: u64,
+    pub user_id: i64,
     pub task_id: String,
     pub file_md5: String,
     pub chunk_size: u64,
@@ -82,7 +82,7 @@ pub fn verify_session_timestamp(timestamp: i64) -> Result<(), AppError> {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccessClaims {
     /// 用户 ID
-    pub sub: u64,
+    pub sub: i64,
     /// 签发时间（Unix 时间戳）
     pub iat: usize,
     /// 过期时间（Unix 时间戳）
@@ -95,7 +95,7 @@ pub struct AccessClaims {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RefreshClaims {
     /// 用户 ID
-    pub sub: u64,
+    pub sub: i64,
     /// 签发时间（Unix 时间戳）
     pub iat: usize,
     /// 过期时间（Unix 时间戳）
@@ -109,7 +109,7 @@ pub struct RefreshClaims {
 ///
 /// 在 JWT 头部嵌入 `kid`（密钥 ID），以便验证器可以仅检查（未验证的）
 /// 头部就路由到正确的用户密钥，而无需手动解码载荷。
-pub fn generate_access_token(secret_key: &[u8], user_id: u64) -> Result<(String, i64), AppError> {
+pub fn generate_access_token(secret_key: &[u8], user_id: i64) -> Result<(String, i64), AppError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| AppError::Internal("time error".into()))?
@@ -141,7 +141,7 @@ pub fn generate_access_token(secret_key: &[u8], user_id: u64) -> Result<(String,
 
 /// 生成使用全局服务器密钥签名的 JWT 刷新令牌（HS256）。
 /// 返回（令牌，过期时间戳）。
-pub fn generate_refresh_token(user_id: u64) -> Result<(String, i64), AppError> {
+pub fn generate_refresh_token(user_id: i64) -> Result<(String, i64), AppError> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| AppError::Internal("time error".into()))?
@@ -169,7 +169,7 @@ pub fn generate_refresh_token(user_id: u64) -> Result<(String, i64), AppError> {
 
 /// 验证 JWT 访问令牌，有效时返回（user_id, jti）。
 /// 访问令牌使用每个用户的密钥。
-pub fn verify_access_token(secret_key: &[u8], token: &str) -> Option<(u64, String)> {
+pub fn verify_access_token(secret_key: &[u8], token: &str) -> Option<(i64, String)> {
     let token_data = jsonwebtoken::decode::<AccessClaims>(
         token,
         &jsonwebtoken::DecodingKey::from_secret(secret_key),
@@ -182,7 +182,7 @@ pub fn verify_access_token(secret_key: &[u8], token: &str) -> Option<(u64, Strin
 
 /// 验证 JWT 刷新令牌，有效时返回（user_id, jti）。
 /// 刷新令牌使用全局服务器密钥。
-pub fn verify_refresh_token(token: &str) -> Option<(u64, String)> {
+pub fn verify_refresh_token(token: &str) -> Option<(i64, String)> {
     let key = refresh_token_key();
     let token_data = jsonwebtoken::decode::<RefreshClaims>(
         token,

@@ -20,7 +20,7 @@ pub mod users {
     #[sea_orm(table_name = "users")]
     pub struct Model {
         #[sea_orm(primary_key)]
-        pub id: u64,
+        pub id: i64,
         pub email: String,
         #[serde(skip_serializing)]
         pub password: String,
@@ -46,7 +46,7 @@ pub mod objects {
     #[sea_orm(table_name = "objects")]
     pub struct Model {
         #[sea_orm(primary_key)]
-        pub id: u64,
+        pub id: i64,
         pub uuid: String,
         pub name: String,
         pub size: i64,
@@ -81,9 +81,9 @@ pub mod user_objects {
     #[sea_orm(table_name = "user_objects")]
     pub struct Model {
         #[sea_orm(primary_key)]
-        pub user_id: u64,
+        pub user_id: i64,
         #[sea_orm(primary_key)]
-        pub object_id: u64,
+        pub object_id: i64,
         pub created_at: DateTimeUtc,
     }
 
@@ -104,14 +104,14 @@ pub mod upload_tasks {
     #[sea_orm(table_name = "upload_tasks")]
     pub struct Model {
         #[sea_orm(primary_key)]
-        pub id: u64,
+        pub id: i64,
         pub uuid: String,
         pub object_id: String,
         pub file_md5: String,
         pub file_size: i64,
         pub chunk_size: i64,
         pub chunk_count: i64,
-        pub user_id: u64,
+        pub user_id: i64,
         #[serde(skip)]
         pub status: String,
         pub uploaded_bitmap: String,

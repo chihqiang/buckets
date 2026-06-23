@@ -47,7 +47,7 @@ pub async fn precheck(
     db: &DatabaseConnection,
     file_md5: &str,
     file_size: u64,
-    user_id: u64,
+    user_id: i64,
     chunk_size: u64,
     file_name: &str,
 ) -> Result<PrecheckResult, AppError> {
@@ -186,7 +186,7 @@ pub async fn precheck(
 ///   而重新读取所有分块。
 pub async fn merge(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     file_name: &str,
     file_md5: &str,
     file_size: u64,

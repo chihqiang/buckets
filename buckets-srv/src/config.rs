@@ -69,7 +69,7 @@ pub struct AppConfig {
     /// 可配置的 CORS 源（逗号分隔，为空=开发环境允许所有）
     pub cors_allowed_origins: Vec<String>,
     /// 具有超级管理员权限的用户 ID 集合（Web 管理）
-    pub super_admin_ids: Vec<u64>,
+    pub super_admin_ids: Vec<i64>,
     /// 速率限制配置（网关）
     pub rate_limit: RateLimitConfig,
     /// 是否启用速率限制（网关）
@@ -118,10 +118,10 @@ impl AppConfig {
                 .collect()
         };
 
-        let super_admin_ids: Vec<u64> = std::env::var(constant::ENV_SUPER_ADMIN_IDS)
+        let super_admin_ids: Vec<i64> = std::env::var(constant::ENV_SUPER_ADMIN_IDS)
             .unwrap_or_default()
             .split(',')
-            .filter_map(|s| s.trim().parse::<u64>().ok())
+            .filter_map(|s| s.trim().parse::<i64>().ok())
             .collect();
 
         let host = env_str(constant::ENV_HOST, constant::DEFAULT_HOST);

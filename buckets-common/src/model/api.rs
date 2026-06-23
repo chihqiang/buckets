@@ -158,7 +158,7 @@ pub struct RefreshRequest {
 /// 凭据验证响应体。
 #[derive(Serialize)]
 pub struct VerifyResponse {
-    pub user_id: u64,
+    pub user_id: i64,
 }
 
 /// 构造 200 OK API 响应。
@@ -178,7 +178,7 @@ pub fn api_ok<T: serde::Serialize>(data: T) -> Json<ApiResponse<T>> {
 /// 列表/详情中返回的用户信息——`secret_key` 不会暴露。
 #[derive(Serialize)]
 pub struct UserInfo {
-    pub id: u64,
+    pub id: i64,
     pub email: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
@@ -214,7 +214,7 @@ pub struct PaginatedResponse<T: Serialize> {
 /// 对象列表中返回的对象信息。
 #[derive(Serialize)]
 pub struct ObjectInfo {
-    pub id: u64,
+    pub id: i64,
     pub uuid: String,
     pub name: String,
     pub size: i64,

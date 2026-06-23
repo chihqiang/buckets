@@ -9,7 +9,7 @@ use sea_orm::{
 /// 用户列表查询返回的行（不含 secret_key）。
 #[derive(Debug)]
 pub struct UserRow {
-    pub id: u64,
+    pub id: i64,
     pub email: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -48,7 +48,7 @@ pub async fn list_users(
 /// 通过 ID 获取单个用户。
 pub async fn get_user(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
 ) -> Result<Option<UserRow>, AppError> {
     let user = users::Entity::find_by_id(user_id).one(db).await?;
     Ok(user.map(|u| UserRow {
@@ -65,7 +65,7 @@ pub async fn create_user(
     email: &str,
     password_hash: &str,
     secret_key: &str,
-) -> Result<u64, AppError> {
+) -> Result<i64, AppError> {
     let now = Utc::now();
     let result = users::Entity::insert(users::ActiveModel {
         email: Set(email.to_string()),
@@ -84,7 +84,7 @@ pub async fn create_user(
 /// 更新用户邮箱和/或密码。
 pub async fn update_user(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     email: Option<&str>,
     password_hash: Option<&str>,
 ) -> Result<bool, AppError> {
@@ -114,7 +114,7 @@ pub async fn update_user(
 /// 通过 ID 删除用户，级联删除关联的 user_objects 和 upload_tasks。
 pub async fn delete_user(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
 ) -> Result<bool, AppError> {
     let txn = db.begin().await?;
 
@@ -137,7 +137,7 @@ pub async fn delete_user(
 /// 将用户的 secret_key 重置为新的随机值。
 pub async fn reset_user_secret_key(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     new_secret_key: &str,
 ) -> Result<bool, AppError> {
     let now = Utc::now();

@@ -55,7 +55,7 @@ pub async fn list_users(
 pub async fn get_user(
     State(state): State<AppState>,
     Extension(_admin): Extension<AdminUserId>,
-    Path(user_id): Path<u64>,
+    Path(user_id): Path<i64>,
 ) -> Result<Json<ApiResponse<UserInfo>>, AppError> {
     let user = dao::get_user(&state.db, user_id)
         .await?
@@ -86,7 +86,7 @@ pub async fn create_user(
 pub async fn update_user(
     State(state): State<AppState>,
     Extension(_admin): Extension<AdminUserId>,
-    Path(user_id): Path<u64>,
+    Path(user_id): Path<i64>,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<ApiResponse<UserInfo>>, AppError> {
     let password_hash = req
@@ -118,7 +118,7 @@ pub async fn update_user(
 pub async fn delete_user(
     State(state): State<AppState>,
     Extension(_admin): Extension<AdminUserId>,
-    Path(user_id): Path<u64>,
+    Path(user_id): Path<i64>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     let deleted = dao::delete_user(&state.db, user_id).await?;
     if !deleted {
@@ -131,7 +131,7 @@ pub async fn delete_user(
 pub async fn reset_user_secret_key(
     State(state): State<AppState>,
     Extension(_admin): Extension<AdminUserId>,
-    Path(user_id): Path<u64>,
+    Path(user_id): Path<i64>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
     let new_key = dao::generate_secret_key();
     let updated = dao::reset_user_secret_key(&state.db, user_id, &new_key).await?;

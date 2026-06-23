@@ -14,7 +14,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 /// 从认证中间件提取的用户 ID。
 #[derive(Debug, Clone, Copy)]
-pub struct UserId(pub u64);
+pub struct UserId(pub i64);
 
 // ============================================================================
 // 认证辅助函数
@@ -22,7 +22,7 @@ pub struct UserId(pub u64);
 
 /// 包含 id 和 secret_key 的用户记录，用于认证。
 pub struct UserWithKey {
-    pub id: u64,
+    pub id: i64,
     pub secret_key: String,
 }
 
@@ -60,7 +60,7 @@ pub async fn verify_user(
 /// 如果存储的值为空，回退到 `DEFAULT_SECRET_KEY`。
 pub async fn get_user_secret_key(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
 ) -> Result<String, AppError> {
     let user = users::Entity::find_by_id(user_id)
         .one(db)

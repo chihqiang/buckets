@@ -17,7 +17,7 @@ pub async fn create_upload_task_with_expiration(
     file_size: i64,
     chunk_size: i64,
     chunk_count: i32,
-    user_id: u64,
+    user_id: i64,
     expiration_hours: i64,
 ) -> Result<UploadTask, AppError> {
     let uuid = Uuid::new_v4().to_string();
@@ -67,7 +67,7 @@ pub async fn find_upload_task(
 pub async fn find_upload_by_md5(
     db: &DatabaseConnection,
     file_md5: &str,
-    user_id: u64,
+    user_id: i64,
 ) -> Result<Option<UploadTask>, AppError> {
     upload_tasks::Entity::find()
         .filter(upload_tasks::Column::FileMd5.eq(file_md5))

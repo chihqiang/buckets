@@ -56,7 +56,7 @@ pub async fn soft_delete_object(
 /// 通过对象的 UUID 检查用户是否与该对象关联（所有者检查）。
 pub async fn check_user_owns_object_by_uuid(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     uuid: &str,
 ) -> Result<bool, AppError> {
     let obj = objects::Entity::find()
@@ -80,8 +80,8 @@ pub async fn check_user_owns_object_by_uuid(
 /// 如果关联已存在，返回 Ok(()) 不报错。
 pub async fn insert_user_object<C: ConnectionTrait>(
     db: &C,
-    user_id: u64,
-    object_id: u64,
+    user_id: i64,
+    object_id: i64,
 ) -> Result<(), AppError> {
     let exists = user_objects::Entity::find()
         .filter(user_objects::Column::UserId.eq(user_id))
@@ -105,7 +105,7 @@ pub async fn insert_user_object<C: ConnectionTrait>(
 /// 通过对象的 UUID 移除用户-对象关联。如果是最后一个所有者则返回 true。
 pub async fn remove_user_object_by_uuid(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     uuid: &str,
 ) -> Result<bool, AppError> {
     let obj = objects::Entity::find()
@@ -133,7 +133,7 @@ use sea_orm::sea_query::Query;
 /// 文件列表查询返回的行。
 #[derive(Debug)]
 pub struct ObjectRow {
-    pub id: u64,
+    pub id: i64,
     pub uuid: String,
     pub name: String,
     pub size: i64,
@@ -175,7 +175,7 @@ impl From<ObjectMeta> for ObjectRow {
 /// 列出特定用户拥有的文件（分页）。
 pub async fn list_objects_by_user(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     page: u64,
     page_size: u64,
 ) -> Result<(Vec<ObjectRow>, i64), AppError> {

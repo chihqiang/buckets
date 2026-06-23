@@ -14,7 +14,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Users::Id)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
@@ -58,7 +58,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(Objects::Id)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
@@ -155,12 +155,12 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(UserObjects::UserId)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
                         ColumnDef::new(UserObjects::ObjectId)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
@@ -196,7 +196,7 @@ impl MigrationTrait for Migration {
                     .if_not_exists()
                     .col(
                         ColumnDef::new(UploadTasks::Id)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
@@ -229,7 +229,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(
                         ColumnDef::new(UploadTasks::UserId)
-                            .big_unsigned()
+                            .big_integer()
                             .not_null(),
                     )
                     .col(
@@ -339,7 +339,7 @@ impl MigrationTrait for Migration {
                 Users::UpdatedAt,
             ])
             .values_panic([
-                1u64.into(),
+                1i64.into(),
                 "admin@buckets.local".into(),
                 password_hash.into(),
                 "d6b1f4e8a2c9f3e7b5d0a8c1e4f7b2a6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f".into(),

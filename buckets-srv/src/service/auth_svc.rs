@@ -16,7 +16,7 @@ use sea_orm::DatabaseConnection;
 /// 验证 file_size > 0 以防止无意义的任务。
 pub async fn issue_sts(
     db: &DatabaseConnection,
-    user_id: u64,
+    user_id: i64,
     req: &StsRequest,
 ) -> Result<StsResult, AppError> {
     // 基本验证
