@@ -76,28 +76,21 @@ pub async fn list_objects(
     }))
 }
 
-/// DELETE /api/v1/objects/:id — 移除文件关联。
+/// DELETE /api/v1/objects/:id — 移除用户与文件的关联。
 ///
-/// 移除当前用户的 user_objects 关联。
-/// 如果是最后一个所有者，对象也会被软删除。
+/// 仅删除 user_objects 关联记录，不动 objects 表数据。
+/// 物理文件由后台 ref_check 在无任何用户关联时清理。
 pub async fn delete_object(
     State(state): State<AppState>,
     Extension(uid): Extension<UserId>,
-    Path(object_uuid): Path<String>,
+    Path(object_id): Path<i64>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-    // 验证对象存在且用户拥有它
-    let owns = dao::check_user_owns_object_by_uuid(&state.db, uid.0, &object_uuid).await?;
-    if !owns {
+    let removed = dao::remove_user_object_by_id(&state.db, uid.0, object_id).await?;
+    if !removed {
         return Err(AppError::NotFound("file not found".into()));
     }
 
-    // 检查是否是最后一个所有者
-    let is_last = dao::remove_user_object_by_uuid(&state.db, uid.0, &object_uuid).await?;
-    if is_last {
-        dao::soft_delete_object(&state.db, &object_uuid).await?;
-    }
-
-    tracing::info!(user_id = uid.0, object_id = object_uuid, "file deleted");
+    tracing::info!(user_id = uid.0, object_id = object_id, "user-object association removed");
 
     Ok(api_ok(()))
 }

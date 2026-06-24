@@ -128,6 +128,20 @@ pub async fn remove_user_object_by_uuid(
         None => Ok(false),
     }
 }
+
+/// 通过对象的自增 ID 移除用户-对象关联。返回是否实际删除了记录。
+pub async fn remove_user_object_by_id(
+    db: &DatabaseConnection,
+    user_id: i64,
+    object_id: i64,
+) -> Result<bool, AppError> {
+    let result = user_objects::Entity::delete_many()
+        .filter(user_objects::Column::UserId.eq(user_id))
+        .filter(user_objects::Column::ObjectId.eq(object_id))
+        .exec(db)
+        .await?;
+    Ok(result.rows_affected > 0)
+}
 use sea_orm::sea_query::Query;
 
 /// 文件列表查询返回的行。
