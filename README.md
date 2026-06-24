@@ -4,6 +4,7 @@
 
 ## 核心特性
 
+- **直接上传**：通过 multipart/form-data 直接上传小文件，浏览器原生支持，无需额外依赖
 - **分片上传**：大文件切分为可配置大小（默认 8MB）的分片，支持并发上传（默认 4 并发，最大 16）
 - **Tus 可恢复上传**：遵循 tus 1.0.0 协议，支持 POST/PATCH/HEAD/DELETE 标准端点，断点续传零配置
 - **流式写入**：分片数据流式写入磁盘，避免将整个分片加载到内存，杜绝 OOM 风险
@@ -61,9 +62,19 @@ buckets/
 │   │   ├── progress.rs   # 进度条（indicatif）
 │   │   └── client/       # HTTP 客户端（STS, precheck, chunk, merge）
 │   └── Cargo.toml
+├── jssdk/                    # JavaScript SDK（@chihqiang/buckets）
+│   ├── src/
+│   │   ├── buckets-client.ts # 统一入口类
+│   │   ├── http-client.ts    # 传输层（fetch + 超时 + 错误解析）
+│   │   ├── auth-client.ts    # 认证包装（Bearer Token 注入）
+│   │   ├── api/              # 领域 API（auth, objects, users）
+│   │   ├── upload/           # 上传器（direct, chunk, tus）
+│   │   └── index.ts          # 统一导出
+│   ├── vite.config.ts        # Vite lib 构建（ESM + CJS + UMD）
+│   ├── package.json          # 包名 @chihqiang/buckets
+│   └── README.md
 ├── web/                      # 管理后台前端（Vue 3 + Tailwind CSS）
 │   ├── src/
-│   │   ├── sdk/              # HTTP 客户端（Client）+ API 封装（Api 类）
 │   │   ├── stores/           # Pinia 状态管理 + 登录/登出逻辑
 │   │   ├── views/            # 页面组件（Login, ObjectList, UserList）
 │   │   ├── components/       # 通用组件（Layout）
@@ -91,14 +102,17 @@ buckets/
 | `buckets-common` | lib | serde, chrono, uuid, sha2, hmac, md-5, base64, argon2, axum, sea-orm/`sqlx-mysql` `sqlx-sqlite`, thiserror | 共享模型、统一错误体系、sea-orm 实体、数据库连接池（统一 create_pool，支持 SQLite/MySQL）、全局常量、工具函数（crypto/validate/path） |
 | `buckets-srv` | bin | axum 0.8, tokio, sea-orm 1.x, tower-http, dotenvy, dashmap, jsonwebtoken | HTTP API 服务、JWT + Basic Auth 双模认证、分片管理、异步合并、流式写入、GC 清理、速率限制、**前端静态文件分发** |
 | `buckets-cli` | bin | clap 4, reqwest 0.12, tokio, indicatif, rpassword | 文件预处理、流式分片上传、进度展示、断点续传、凭证管理 |
+| `@chihqiang/buckets (jssdk/)` | npm | Vite lib 构建，TypeScript 6 | JavaScript SDK，支持三种上传模式（direct / chunk / tus） |
 
 ### 依赖关系
 
 ```
+@chihqiang/buckets (jssdk/) ──► (fetch, no Rust deps)
+
 buckets-cli ──► buckets-common
                         ▲
                         │
-buckets-srv ─────────┘
+buckets-srv ────────────┘
 ```
 
 ## 快速开始
@@ -115,26 +129,29 @@ cargo run --release -p migration
 # 3. 启动服务端
 cargo run --release -p buckets-srv
 
-# 4. 构建并访问管理后台（可选）
+# 4. 构建 JavaScript SDK（可选，供前端项目引用）
+cd jssdk && npm install && npm run build && cd ..
+
+# 5. 构建并访问管理后台（可选）
 cd web && npm install && npm run build && cd ..
 # 访问 http://localhost:8080 即可打开管理后台
 # 默认账号：admin@buckets.local / buckets
 
-# 5. 上传文件（CLI）
+# 6. 上传文件（CLI）
 cargo run --release -p buckets-cli -- \
     --server http://127.0.0.1:8080 \
     --email admin@buckets.local \
     --password buckets \
     upload ./large-file.mp4
 
-# 6. 查看上传状态
+# 7. 查看上传状态
 cargo run --release -p buckets-cli -- \
     --server http://127.0.0.1:8080 \
     --email admin@buckets.local \
     --password buckets \
     status <task_id>
 
-# 7. 断点续传
+# 8. 断点续传
 cargo run --release -p buckets-cli -- \
     --server http://127.0.0.1:8080 \
     --email admin@buckets.local \
@@ -446,7 +463,7 @@ cargo test -p buckets-common
 | 样式 | Tailwind CSS 4 | 原子化 CSS |
 | 路由 | Vue Router 4 | SPA 路由 |
 | 状态管理 | Pinia 3 | 全局状态（auth, objects, users） |
-| HTTP | Axios 1.x | 请求发送 + 拦截器 |
+| SDK | @chihqiang/buckets (jssdk/) | 本地 file: 依赖，三种上传模式 |
 | 类型检查 | TypeScript 6 + vue-tsc 3 | 类型安全 |
 
 ## 文档

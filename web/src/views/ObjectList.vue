@@ -3,6 +3,7 @@ import { onMounted, ref, computed } from 'vue'
 import { useObjectsStore } from '../stores/objects'
 import { useAuthStore } from '../stores/auth'
 import { BucketsClient } from '@chihqiang/buckets'
+import type { ChunkUploadProgress, TusUploadProgress } from '@chihqiang/buckets'
 import { useDialog } from '../composables/useDialog'
 
 const store = useObjectsStore()
@@ -106,7 +107,7 @@ async function handleUpload() {
 
     try {
       await client.chunk.upload(file, {
-        onProgress: (p) => {
+        onProgress: (p: ChunkUploadProgress) => {
           uploadProgress.value = p.percent
           uploadStatus.value = 'uploading'
         },
@@ -138,7 +139,7 @@ async function handleTusUpload() {
 
     try {
       await client.tus.upload(file, {
-        onProgress: (p) => {
+        onProgress: (p: TusUploadProgress) => {
           tusUploadProgress.value = p.percent
           tusUploadStatus.value = 'uploading'
         },

@@ -42,12 +42,13 @@ await client.users.update(1, { email: 'updated@example.com' })
 await client.users.delete(2)
 await client.users.resetSecretKey(1)
 
-// 上传文件
+// 上传文件 — 三种模式
 const file = fileInput.files[0]
-await client.chunk.upload(file, {
+await client.direct.upload(file)               // 直接上传（小文件）
+await client.chunk.upload(file, {               // 分片上传（大文件）
   onProgress: (p) => console.log(`${p.percent}%`),
 })
-await client.tus.upload(file, { deferLength: true })
+await client.tus.upload(file, { deferLength: true }) // TUS 可恢复上传
 ```
 
 ## API
@@ -91,6 +92,16 @@ client.getToken(): string
 | `update(id, data)` | 更新用户（email / password） |
 | `delete(id)` | 删除用户 |
 | `resetSecretKey(id)` | 重置用户的 secret key |
+
+### client.direct - 直接上传
+
+适合小文件，通过 multipart/form-data 上传，浏览器原生支持。
+
+```ts
+await client.direct.upload(file: File, options?: {
+  signal?: AbortSignal
+}): Promise<{ object_id, storage_path, size, md5 }>
+```
 
 ### client.chunk - 分块上传
 

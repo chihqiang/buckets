@@ -27,9 +27,18 @@ buckets 是一个 Rust 实现的轻量高性能私有对象存储服务，支持
 ```
 buckets/                  # Workspace 根
 ├── .env.example             # 环境变量模板
+├── jssdk/                   # JavaScript SDK（@chihqiang/buckets）
+│   ├── src/
+│   │   ├── buckets-client.ts  # 统一入口类
+│   │   ├── http-client.ts     # 传输层（fetch + 超时 + 错误解析）
+│   │   ├── auth-client.ts     # 认证包装
+│   │   ├── api/               # 领域 API（auth, objects, users）
+│   │   ├── upload/            # 上传器（direct, chunk, tus）
+│   │   └── index.ts           # 统一导出
+│   ├── vite.config.ts         # Vite lib 构建（ESM + CJS + UMD）
+│   └── package.json           # 包名 @chihqiang/buckets
 ├── web/                     # 管理后台前端（Vue 3 + Tailwind CSS）
 │   ├── src/
-│   │   ├── sdk/             # HTTP 客户端（Client）+ API 封装（Api 类）+ ChunkUploader
 │   │   ├── stores/          # Pinia 状态管理（auth, objects, users）+ API 单例
 │   │   ├── router/          # Vue Router（登录鉴权守卫）
 │   │   ├── views/           # 页面：Login, ObjectList, UserList
@@ -81,6 +90,7 @@ src/
 │   ├── mod.rs          # 路由组装
 │   ├── auth.rs         # 登录/刷新/登出
 │   ├── sts.rs          # STS 凭证签发 + 对象信息/删除
+│   ├── direct.rs       # 直接上传（multipart/form-data）
 │   ├── precheck.rs     # 文件预校验（秒传/续传）
 │   ├── chunk.rs        # 分片上传 + 状态查询
 │   ├── merge.rs        # 合并 + 合并状态轮询
@@ -111,6 +121,7 @@ src/
   /auth/verify        → 验证凭据
   /upload/sts         → 获取 STS 凭证
   /upload/precheck    → 文件预校验
+  /upload/direct      → 直接上传（multipart/form-data）
   /upload/chunk/*     → 分片上传
   /upload/merge       → 合并分片
   /object/{id}        → 对象操作（STS 端点）
@@ -586,13 +597,8 @@ web/                        # Vue 3 + TypeScript + Tailwind CSS
 │   ├── main.ts             # 入口：createApp + Pinia + Router
 │   ├── App.vue             # 根组件（RouterView）
 │   ├── style.css           # @import "tailwindcss"
-│   ├── sdk/                # 底层 HTTP 客户端
-│   │   ├── client.ts       # 基于 fetch 的 Client（Bearer Token、JSON 序列化、错误解析）
-│   │   ├── api.ts          # Api 类：封装所有 API 方法（auth/objects/users）
-│   │   ├── chunk-uploader.ts # 分片上传器
-│   │   └── index.ts        # 统一导出
 │   ├── stores/             # Pinia 状态管理 + API 单例
-│   │   ├── api.ts          # getApi() 单例 + login/logout（含 localStorage 管理）
+│   │   ├── api.ts          # BucketsClient 单例 + login/logout（含 localStorage 管理）
 │   │   ├── auth.ts         # token 响应式状态、isSuperAdmin
 │   │   ├── objects.ts      # 对象列表、分页、删除
 │   │   └── users.ts        # 用户 CRUD、重置密钥
@@ -600,7 +606,7 @@ web/                        # Vue 3 + TypeScript + Tailwind CSS
 │   │   └── index.ts        # 路由表 + beforeGuard（未登录 → /login，非管理员 → /objects）
 │   ├── views/
 │   │   ├── Login.vue       # 登录页（邮箱 + 密码）
-│   │   ├── ObjectList.vue  # 对象列表（分页 + 删除）
+│   │   ├── ObjectList.vue  # 对象列表（分页 + 删除 + 三种上传模式）
 │   │   └── UserList.vue    # 用户管理（新建/编辑/删除/重置密钥，仅管理员）
 │   └── components/
 │       └── Layout.vue      # 顶栏导航 + 退出按钮 + RouterView
@@ -611,13 +617,12 @@ web/                        # Vue 3 + TypeScript + Tailwind CSS
 ### 4.1 数据流
 
 ```
-页面组件 → Pinia Store → Api 类（sdk/api.ts）→ Client（sdk/client.ts，基于 fetch）→ HTTP → 后端
+页面组件 → Pinia Store → BucketsClient（@chihqiang/buckets）→ HTTP → 后端
 ```
 
-- `sdk/client.ts` 封装 fetch，处理 Bearer Token、JSON 序列化、统一错误解析
-- `sdk/api.ts` 的 `Api` 类封装所有 API 方法（auth/objects/users），返回已解包的数据
-- `stores/api.ts` 持有 `Api` 单例并提供 `login`/`logout` 便捷函数（含 localStorage 管理）
-- 页面组件只与 store 交互，不直接调用 api
+- `@chihqiang/buckets` 包提供 `BucketsClient` 统一入口，封装了传输层和认证
+- `stores/api.ts` 持有 `BucketsClient` 单例并提供 `login`/`logout` 便捷函数（含 localStorage 管理）
+- 页面组件只与 store 交互，不直接调用 `BucketsClient`
 
 ### 4.2 权限控制
 
