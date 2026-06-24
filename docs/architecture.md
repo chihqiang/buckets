@@ -263,8 +263,8 @@ CLI                                          Gateway
 用户调用 `/api/v1/upload/sts` 获取上传上下文：
 
 1. 服务端生成 `task_id`（UUID v4，upload_tasks 主键）
-2. 服务端生成 `object_id`（UUID v4，buckets 主键）
-3. 生成 `object_key`：格式 `{user_id}/{YYYY}/{MM}/{DD}/{object_id}.{ext}`
+2. 服务端生成 `object_id`（UUID v4，objects 业务标识）
+3. 生成 `object_key`：格式 `{user_id}/{YYYYMMDD}/{object_id}.{ext}`
 4. 计算 `session_signature` = HMAC-SHA256(`secret_key`, `"session:{user_id}:{task_id}:{file_md5}:{chunk_size}:{timestamp}:{salt}`)
 5. 返回 STS 响应，包含会话级签名（有效期 2h，每次分片上传刷新 `last_activity_at`）
 

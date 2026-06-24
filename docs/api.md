@@ -274,7 +274,7 @@ POST /api/v1/upload/sts
     "message": "ok",
     "data": {
         "task_id": "550e8400-e29b-41d4-a716-446655440000",
-        "object_key": "1/example.mp4",
+        "object_key": "data/objects/1/20260614/550e8400-e29b-41d4-a716-446655440000.mp4",
         "session_signature": "a1b2c3d4e5f6...",
         "session_timestamp": 1700000000,
         "session_salt": "550e8400-e29b-41d4-a716-446655440000"
@@ -285,7 +285,7 @@ POST /api/v1/upload/sts
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | task_id | String | UUID，上传会话标识 |
-| object_key | String | 格式 `{user_id}/{file_name}`，存储逻辑路径 |
+| object_key | String | 格式 `data/objects/{user_id}/{YYYYMMDD}/{object_id}.{ext}`，物理存储路径 |
 | session_signature | String | 会话级 HMAC-SHA256 签名（hex），有效期 2h |
 | session_timestamp | i64 | 签名时间戳（Unix 秒） |
 | session_salt | String | 签名随机盐值（UUID） |
@@ -339,7 +339,7 @@ POST /api/v1/upload/precheck
     "data": {
         "exists": true,
         "object_id": "550e8400-e29b-41d4-a716-446655440000",
-        "storage_path": "data/objects/ab/cd/550e8400-...",
+        "storage_path": "data/objects/1/20260614/550e8400-....mp4",
         "task_id": null,
         "uploaded_chunks": [],
         "chunk_size": 8388608
@@ -562,7 +562,7 @@ POST /api/v1/upload/merge
 4. 立即返回 { task_id, message: "merge started" }
 5. tokio::spawn 后台执行:
    ├── 按 chunk_index 顺序读取暂存分片
-   ├── BufWriter(1MB) 流式写入合并文件: data/objects/{obj_id_prefix}/{obj_id}
+    ├── BufWriter(1MB) 流式写入合并文件: data/objects/{user_id}/{YYYYMMDD}/{uuid}.{ext}
    ├── 边写边计算 MD5
    ├── 校验 computed_md5 == file_md5
      │   ├── 匹配 → ORM 插入 objects + user_objects → status = 'completed'
@@ -612,7 +612,7 @@ GET /api/v1/upload/merge/status?task_id=<uuid>
     "data": {
         "task_id": "550e8400-e29b-41d4-a716-446655440000",
         "status": "completed",
-        "storage_path": "data/objects/ab/cd/550e8400-..."
+        "storage_path": "data/objects/1/20260614/550e8400-....mp4"
     }
 }
 ```
@@ -670,7 +670,7 @@ GET /api/v1/object/{object_id}
         "content_type": "video/mp4",
         "extension": "mp4",
         "bucket": "default",
-        "storage_path": "data/objects/1/2026/06/14/550e8400-....mp4",
+        "storage_path": "data/objects/1/20260614/550e8400-....mp4",
         "image_width": 0,
         "image_height": 0,
         "image_type": "",
@@ -692,7 +692,7 @@ GET /api/v1/object/{object_id}
 | extension | String / null | 文件扩展名 |
 | bucket | String | 存储桶（默认 "default"） |
 | storage_path | String | 物理存储相对路径 |
-| status | String | `active`=正常, `deleted`=已删除, `archived`=已归档 |
+| status | String | `active`=正常, `deleted`=已删除 |
 | created_at | DateTime | 创建时间 |
 | updated_at | DateTime | 最后更新时间 |
 
@@ -903,7 +903,7 @@ GET /api/v1/objects?page=1&page_size=20&user_id=1
                 "content_type": "video/mp4",
                 "extension": "mp4",
                 "bucket": "default",
-                "storage_path": "data/objects/1/2026/06/14/550e8400-....mp4",
+                "storage_path": "data/objects/1/20260614/550e8400-....mp4",
                 "image_width": 0,
                 "image_height": 0,
                 "image_type": "",
@@ -922,12 +922,12 @@ GET /api/v1/objects?page=1&page_size=20&user_id=1
 ### 13.8 删除对象
 
 ```
-DELETE /api/v1/objects/{uuid}
+DELETE /api/v1/objects/{id}
 ```
 
 **Auth**: 必需
 
-移除当前用户与文件的关联。若为最后一个所有者，文件同时软删除。物理文件由后台 `ref_check` 任务异步清理。
+移除当前用户与文件的关联（删除 `user_objects` 记录），不修改 `objects` 表。物理文件由后台 `ref_check` 在对象无任何所有者时异步清理。
 
 ---
 

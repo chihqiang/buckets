@@ -68,11 +68,10 @@ user::Entity::find_by_id(id).one(db).await?;
 | content_type | VARCHAR(256) | NULLABLE | MIME 类型，如 `video/mp4` |
 | extension | VARCHAR(64) | NULLABLE | 文件扩展名，如 `mp4` |
 | bucket | VARCHAR(256) | NOT NULL, DEFAULT 'default' | 存储桶名称 |
-| storage_path | VARCHAR(1024) | NULLABLE | 物理文件存储的相对路径 |
-| image_width | INT | NOT NULL, DEFAULT 0 | 图片宽度（像素） |
-| image_height | INT | NOT NULL, DEFAULT 0 | 图片高度（像素） |
+| storage_path | TEXT | NOT NULL | 物理文件存储的相对路径 |
+| image_width | BIGINT | NOT NULL, DEFAULT 0 | 图片宽度（像素） |
+| image_height | BIGINT | NOT NULL, DEFAULT 0 | 图片高度（像素） |
 | image_type | VARCHAR(32) | NOT NULL, DEFAULT '' | 图片类型/格式 |
-| upload_method | VARCHAR(32) | NOT NULL, DEFAULT 'chunk' | 上传方式: `chunk` / `tus` |
 | status | VARCHAR(32) | NOT NULL, DEFAULT 'active' | 状态: `active` / `deleted` |
 | created_at | TIMESTAMP | NOT NULL | 创建时间 |
 | updated_at | TIMESTAMP | NOT NULL | 最后更新时间 |
@@ -152,17 +151,16 @@ object::Entity::find()
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
-| id | BIGINT | PK, AUTO_INCREMENT | 自增主键 |
-| user_id | BIGINT | NOT NULL | 用户 ID |
-| object_id | BIGINT | NOT NULL | 对象 ID |
+| user_id | BIGINT | PK | 用户 ID（复合主键） |
+| object_id | BIGINT | PK | 对象 ID（复合主键） |
 | created_at | TIMESTAMP | NOT NULL | 关联创建时间 |
 
 ### 索引说明
 
 | 索引名 | 列 | 类型 | 用途 |
 |--------|-----|------|------|
-| PRIMARY | id | PK | 主键 |
-| idx_user_objects | (user_id, object_id) | UNIQUE | 唯一约束，防止重复关联 |
+| PRIMARY | (user_id, object_id) | PK | 复合主键，唯一约束 |
+| idx_user_objects_object | object_id | INDEX | 按对象查询用户关联，GC 清理 |
 
 ### 查询模式（ORM）
 
@@ -202,7 +200,7 @@ user_object::Entity::delete_many()
 | file_md5 | VARCHAR(64) | NOT NULL | 文件 MD5，用于续传时查询已有任务 |
 | file_size | BIGINT | NOT NULL | 文件大小（字节） |
 | chunk_size | BIGINT | NOT NULL | 分片大小（字节），默认 8MB |
-| chunk_count | INT | NOT NULL | 总分片数 |
+| chunk_count | BIGINT | NOT NULL | 总分片数 |
 | user_id | BIGINT | NOT NULL | 上传用户 ID |
 | status | VARCHAR(32) | NOT NULL | 状态: `initialized` / `uploading` / `merging` / `completed` / `failed` / `expired` |
 | uploaded_bitmap | TEXT | NOT NULL | 已上传分片位图，JSON 格式 `Vec<u64>` |
