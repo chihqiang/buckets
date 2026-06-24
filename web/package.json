@@ -9,17 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@chihqiang/buckets": "file:../jssdk",
     "@tailwindcss/vite": "^4.3.1",
-
     "pinia": "^3.0.4",
-    "spark-md5": "^3.0.2",
     "tailwindcss": "^4.3.1",
     "vue": "^3.5.34",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",
-    "@types/spark-md5": "^3.0.5",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",

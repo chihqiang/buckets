@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getApi } from './api'
-import type { User } from '../sdk/api'
+import type { User } from '@chihqiang/buckets'
 
 export const useUsersStore = defineStore('users', () => {
   const users = ref<User[]>([])
@@ -12,7 +12,7 @@ export const useUsersStore = defineStore('users', () => {
   async function fetchList(page = 1, pageSize = 20) {
     loading.value = true
     try {
-      const res = await api.getUserList(page, pageSize)
+      const res = await api.users.list(page, pageSize)
       users.value = res.items
       total.value = res.total
     } finally {
@@ -21,19 +21,19 @@ export const useUsersStore = defineStore('users', () => {
   }
 
   async function create(email: string, password: string) {
-    return api.createUser(email, password)
+    return api.users.create(email, password)
   }
 
   async function update(id: number, data: { email?: string; password?: string }) {
-    return api.updateUser(id, data)
+    return api.users.update(id, data)
   }
 
   async function remove(id: number) {
-    await api.deleteUser(id)
+    await api.users.delete(id)
   }
 
   async function resetSecret(id: number) {
-    await api.resetUserSecretKey(id)
+    await api.users.resetSecretKey(id)
   }
 
   return { users, total, loading, fetchList, create, update, remove, resetSecret }

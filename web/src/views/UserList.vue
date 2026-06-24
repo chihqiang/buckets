@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useUsersStore } from '../stores/users'
-import type { User } from '../sdk/api'
+import type { User } from '@chihqiang/buckets'
 import { useDialog } from '../composables/useDialog'
 
 const store = useUsersStore()

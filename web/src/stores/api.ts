@@ -1,37 +1,34 @@
-import { Api } from '../sdk/api'
-import type { LoginResult } from '../sdk/api'
-import { Client } from '../sdk/client'
+import { BucketsClient } from '@chihqiang/buckets'
+import type { LoginResult } from '@chihqiang/buckets'
 
-let _api: Api | null = null
+let _client: BucketsClient | null = null
 
-export function getApi(): Api {
-  if (!_api) {
+export function getApi(): BucketsClient {
+  if (!_client) {
     const token = localStorage.getItem('token') ?? ''
-    _api = new Api(new Client({ baseUrl: '', token }))
+    _client = new BucketsClient({ baseUrl: '', initialToken: token })
   }
-  return _api
+  return _client
 }
 
-/** 登录，保存 token 到 localStorage，返回登录结果 */
 export async function login(email: string, password: string): Promise<LoginResult> {
-  const api = getApi()
-  const data = await api.login(email, password)
-  api.setToken(data.token)
+  const client = getApi()
+  const data = await client.auth.login(email, password)
+  client.setToken(data.token)
   localStorage.setItem('token', data.token)
   localStorage.setItem('refresh_token', data.refresh_token)
   localStorage.setItem('is_super_admin', String(data.is_super_admin))
   return data
 }
 
-/** 退出登录，清除 localStorage */
 export async function logout(): Promise<void> {
-  const api = getApi()
+  const client = getApi()
   try {
-    await api.logout()
+    await client.auth.logout()
   } catch {
     // Ignore API errors; clear local state regardless
   }
-  api.setToken('')
+  client.setToken('')
   localStorage.removeItem('token')
   localStorage.removeItem('refresh_token')
   localStorage.removeItem('is_super_admin')

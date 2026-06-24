@@ -2,7 +2,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useObjectsStore } from '../stores/objects'
 import { useAuthStore } from '../stores/auth'
-import { Client, ChunkUploader, TusUploader } from '../sdk'
+import { BucketsClient } from '@chihqiang/buckets'
 import { useDialog } from '../composables/useDialog'
 
 const store = useObjectsStore()
@@ -85,15 +85,14 @@ async function handleUpload() {
     const file = input.files?.[0]
     if (!file) return
 
-    const client = new Client({ baseUrl: '', token: auth.token })
-    const uploader = new ChunkUploader(client)
+    const client = new BucketsClient({ baseUrl: '', initialToken: auth.token })
     uploading.value = true
     uploadProgress.value = 0
     uploadStatus.value = 'computing'
     uploadError.value = ''
 
     try {
-      await uploader.upload(file, {
+      await client.chunk.upload(file, {
         onProgress: (p) => {
           uploadProgress.value = p.percent
           uploadStatus.value = 'uploading'
@@ -118,15 +117,14 @@ async function handleTusUpload() {
     const file = input.files?.[0]
     if (!file) return
 
-    const client = new Client({ baseUrl: '', token: auth.token })
-    const uploader = new TusUploader(client)
+    const client = new BucketsClient({ baseUrl: '', initialToken: auth.token })
     tusUploading.value = true
     tusUploadProgress.value = 0
     tusUploadStatus.value = 'uploading'
     tusUploadError.value = ''
 
     try {
-      await uploader.upload(file, {
+      await client.tus.upload(file, {
         onProgress: (p) => {
           tusUploadProgress.value = p.percent
           tusUploadStatus.value = 'uploading'

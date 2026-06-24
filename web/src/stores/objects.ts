@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getApi } from './api'
-import type { ObjectItem } from '../sdk/api'
+import type { ObjectItem } from '@chihqiang/buckets'
 
 export const useObjectsStore = defineStore('objects', () => {
   const objects = ref<ObjectItem[]>([])
@@ -12,7 +12,7 @@ export const useObjectsStore = defineStore('objects', () => {
   async function fetchList(page = 1, pageSize = 20) {
     loading.value = true
     try {
-      const res = await api.getObjectList(page, pageSize)
+      const res = await api.objects.list(page, pageSize)
       objects.value = res.items
       total.value = res.total
     } finally {
@@ -21,7 +21,7 @@ export const useObjectsStore = defineStore('objects', () => {
   }
 
   async function remove(id: number) {
-    await api.deleteObject(id)
+    await api.objects.delete(id)
   }
 
   return { objects, total, loading, fetchList, remove }
