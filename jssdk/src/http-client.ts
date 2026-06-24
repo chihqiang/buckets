@@ -67,19 +67,23 @@ export class HttpClient {
     return this.parseResponse<T>(res)
   }
 
-  async uploadBinary<T>(path: string, data: ArrayBuffer | Blob, extraHeaders: Record<string, string>): Promise<T> {
+  async uploadBinary<T>(path: string, data: ArrayBuffer | Blob | FormData, extraHeaders: Record<string, string>): Promise<T> {
     const url = `${this.baseUrl}${path}`
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/octet-stream',
-      ...extraHeaders,
+    const headers: Record<string, string> = { ...extraHeaders }
+
+    const init: RequestInit = { method: 'POST', headers }
+
+    if (data instanceof FormData) {
+      // Let the browser set Content-Type with boundary for FormData
+      delete headers['Content-Type']
+      init.body = data
+    } else {
+      headers['Content-Type'] = 'application/octet-stream'
+      init.body = data
     }
 
-    const res = await this.fetchWithTimeout(url, {
-      method: 'POST',
-      headers,
-      body: data,
-    })
-
+    init.headers = headers
+    const res = await this.fetchWithTimeout(url, init)
     return this.parseResponse<T>(res)
   }
 

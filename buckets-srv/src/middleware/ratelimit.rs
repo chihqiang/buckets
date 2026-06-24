@@ -345,7 +345,7 @@ mod tests {
             },
         );
 
-        let check = |buckets: &DashMap<u64, UserBucket>, uid: u64, cfg: &RateLimitConfig| -> bool {
+        let check = |buckets: &DashMap<i64, UserBucket>, uid: i64, cfg: &RateLimitConfig| -> bool {
             let mut bucket = buckets.entry(uid).or_insert_with(|| UserBucket {
                 tokens: cfg.burst_size,
                 last_refill: Instant::now(),

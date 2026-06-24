@@ -12,6 +12,8 @@ export { ObjectsApi } from './api/objects-api'
 export { UsersApi } from './api/users-api'
 export type { LoginResult, ObjectItem, User, PaginatedResponse } from './api/types'
 
+export { DirectUploader } from './upload/direct-uploader'
+export type { DirectUploadResult } from './upload/direct-uploader'
 export { TusUploader } from './upload/tus-uploader'
 export { ChunkUploader } from './upload/chunk-uploader'
 export { computeChunkMd5s, md5ArrayBuffer } from './upload/hasher'

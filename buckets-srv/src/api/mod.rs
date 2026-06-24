@@ -14,8 +14,9 @@
 
 pub mod auth;
 pub mod chunk;
-pub mod objects;
+pub mod direct;
 pub mod merge;
+pub mod objects;
 pub mod precheck;
 pub mod sts;
 pub mod tus;
@@ -68,6 +69,7 @@ pub fn routes() -> Router<AppState> {
         .route("/upload/tus/{task_id}", head(tus::tus_head))
         .route("/upload/tus/{task_id}", patch(tus::tus_patch))
         .route("/upload/tus/{task_id}", delete(tus::tus_terminate))
+        .route("/upload/direct", post(direct::direct_upload))
         // 应用于所有上传端点的上传速率限制中间件
         .layer(mw::from_fn(ratelimit::upload_ratelimit))
         // 请求体限制，防止超大请求导致 OOM

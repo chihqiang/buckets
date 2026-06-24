@@ -26,7 +26,7 @@ export class AuthClient {
     return this.http.request<T>(method, path, this.authHeaders(), body)
   }
 
-  async uploadBinary<T>(path: string, data: ArrayBuffer | Blob, extraHeaders: Record<string, string>): Promise<T> {
+  async uploadBinary<T>(path: string, data: ArrayBuffer | Blob | FormData, extraHeaders: Record<string, string>): Promise<T> {
     return this.http.uploadBinary<T>(path, data, { ...this.authHeaders(), ...extraHeaders })
   }
 

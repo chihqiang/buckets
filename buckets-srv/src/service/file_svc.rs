@@ -614,6 +614,103 @@ fn sync_directory(_path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// 直接上传——将 multipart 中收到的文件字节直接存储为对象。
+pub async fn direct_upload_bytes(
+    db: &DatabaseConnection,
+    user_id: i64,
+    file_name: &str,
+    content_type: Option<&str>,
+    data: &[u8],
+) -> Result<MergeResult, AppError> {
+    validate::validate_file_extension(file_name)?;
+
+    let object_id = Uuid::new_v4();
+    let extension = path::get_extension(file_name);
+    let now = chrono::Utc::now();
+    let ext_str = extension.as_deref().unwrap_or("");
+    let output_path = path::get_object_storage_path(
+        &object_id,
+        user_id,
+        now.year(),
+        now.month(),
+        now.day(),
+        ext_str,
+    );
+
+    if let Some(parent) = output_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| AppError::StorageError(format!("create object dir: {}", e)))?;
+    }
+
+    let temp_path = output_path.with_extension(constant::TEMP_FILE_EXTENSION);
+    tokio::fs::write(&temp_path, data)
+        .await
+        .map_err(|e| AppError::StorageError(format!("write temp file: {}", e)))?;
+
+    if let Err(e) = tokio::fs::rename(&temp_path, &output_path).await {
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        return Err(AppError::StorageError(format!("rename direct upload: {}", e)));
+    }
+
+    if let Some(parent) = output_path.parent()
+        && let Err(e) = sync_directory(parent)
+    {
+        tracing::warn!(path = %parent.display(), error = %e, "fsync parent dir after rename failed");
+    }
+
+    let computed_md5 = format!("{:x}", Md5::digest(data));
+
+    let effective_content_type: Option<String> = content_type
+        .map(|s| s.to_string())
+        .or_else(|| detect_mime_from_extension(file_name));
+
+    let (image_width, image_height, image_type_str) =
+        if effective_content_type.as_deref().is_some_and(|ct| ct.starts_with("image/")) {
+            let path = output_path.clone();
+            tokio::task::spawn_blocking(move || image::detect_image_dims(&path))
+                .await
+                .map_err(|e| AppError::Internal(format!("image detect panicked: {}", e)))?
+                .unwrap_or((0, 0, String::new()))
+        } else {
+            (0i64, 0i64, String::new())
+        };
+
+    let total_written = data.len() as u64;
+    let uuid_str = object_id.to_string();
+    let storage_path_str = output_path.to_string_lossy().to_string();
+
+    let result = objects::Entity::insert(objects::ActiveModel {
+        uuid: Set(uuid_str.clone()),
+        name: Set(file_name.to_string()),
+        size: Set(total_written as i64),
+        md5: Set(computed_md5.clone()),
+        content_type: Set(effective_content_type.clone()),
+        extension: Set(extension.clone()),
+        bucket: Set(constant::DEFAULT_BUCKET.to_string()),
+        storage_path: Set(storage_path_str.clone()),
+        image_width: Set(image_width),
+        image_height: Set(image_height),
+        image_type: Set(image_type_str.clone()),
+        status: Set(ObjectStatus::Active.as_str().to_string()),
+        created_at: Set(now),
+        updated_at: Set(now),
+        ..Default::default()
+    })
+    .exec(db)
+    .await?;
+
+    let object_internal_id = result.last_insert_id;
+    dao::insert_user_object(db, user_id, object_internal_id).await?;
+
+    Ok(MergeResult {
+        object_id: uuid_str,
+        storage_path: storage_path_str,
+        size: total_written,
+        md5: computed_md5,
+    })
+}
+
 /// 从文件扩展名检测 MIME 类型。如果未知则返回 None。
 /// 使用 `mime_guess` crate 获取全面且维护良好的 MIME 映射。
 fn detect_mime_from_extension(file_name: &str) -> Option<String> {

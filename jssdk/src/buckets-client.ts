@@ -3,6 +3,7 @@ import { AuthClient } from './auth-client'
 import { AuthApi } from './api/auth-api'
 import { ObjectsApi } from './api/objects-api'
 import { UsersApi } from './api/users-api'
+import { DirectUploader } from './upload/direct-uploader'
 import { TusUploader } from './upload/tus-uploader'
 import { ChunkUploader } from './upload/chunk-uploader'
 
@@ -17,6 +18,7 @@ export class BucketsClient {
   readonly auth: AuthApi
   readonly objects: ObjectsApi
   readonly users: UsersApi
+  readonly direct: DirectUploader
   readonly tus: TusUploader
   readonly chunk: ChunkUploader
 
@@ -27,6 +29,7 @@ export class BucketsClient {
     this.auth = new AuthApi(this.authClient)
     this.objects = new ObjectsApi(this.authClient)
     this.users = new UsersApi(this.authClient)
+    this.direct = new DirectUploader(this.authClient)
     this.tus = new TusUploader(this.authClient)
     this.chunk = new ChunkUploader(this.authClient)
   }

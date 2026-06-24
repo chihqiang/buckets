@@ -7,10 +7,10 @@
 FROM node:20-alpine AS builder-web
 
 WORKDIR /build
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
-COPY web/ .
-RUN npm run build
+COPY jssdk/ jssdk/
+COPY web/ web/
+WORKDIR /build/web
+RUN npm ci && npm run build
 
 # ---- Stage 2: Build Rust 后端（前端 dist 编译进二进制） ----
 FROM rust:1.89-slim-bookworm AS builder-rust
@@ -41,7 +41,7 @@ RUN cargo build --release -p buckets-srv && \
 COPY buckets-common buckets-cli buckets-srv/
 
 # 将真正的前端 dist 覆盖 placeholder，然后最终编译
-COPY --from=builder-web /build/dist web/dist/
+COPY --from=builder-web /build/web/dist web/dist/
 RUN cargo build --release -p buckets-srv
 
 # ---- Stage 3: Runtime ----
