@@ -223,6 +223,7 @@ pub struct ObjectInfo {
     pub extension: Option<String>,
     pub bucket: String,
     pub storage_path: Option<String>,
+    pub upload_method: Option<String>,
     pub image_width: i64,
     pub image_height: i64,
     pub image_type: String,

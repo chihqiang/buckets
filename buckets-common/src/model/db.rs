@@ -55,6 +55,8 @@ pub mod objects {
         pub extension: Option<String>,
         pub bucket: String,
         pub storage_path: String,
+        #[sea_orm(default_value = "chunked")]
+        pub upload_method: String,
         pub image_width: i64,
         pub image_height: i64,
         pub image_type: String,
@@ -115,6 +117,12 @@ pub mod upload_tasks {
         #[serde(skip)]
         pub status: String,
         pub uploaded_bitmap: String,
+        #[sea_orm(default_value = "chunked")]
+        pub upload_method: String,
+        #[sea_orm(default_value = 0)]
+        pub current_offset: i64,
+        #[sea_orm(default_value = false)]
+        pub is_deferred: bool,
         pub created_at: DateTimeUtc,
         pub updated_at: DateTimeUtc,
         pub expires_at: DateTimeUtc,

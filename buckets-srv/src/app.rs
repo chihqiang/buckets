@@ -67,6 +67,7 @@ pub fn create_router(state: AppState, cfg: &AppConfig) -> Router {
                 axum::http::Method::GET,
                 axum::http::Method::POST,
                 axum::http::Method::PUT,
+                axum::http::Method::PATCH,
                 axum::http::Method::DELETE,
                 axum::http::Method::OPTIONS,
             ])
@@ -77,6 +78,11 @@ pub fn create_router(state: AppState, cfg: &AppConfig) -> Router {
                 axum::http::HeaderName::from_static(constant::HEADER_SESSION_SIGNATURE),
                 axum::http::HeaderName::from_static(constant::HEADER_SESSION_TIMESTAMP),
                 axum::http::HeaderName::from_static(constant::HEADER_SESSION_SALT),
+                axum::http::HeaderName::from_static(constant::HEADER_TUS_RESUMABLE),
+                axum::http::HeaderName::from_static(constant::HEADER_UPLOAD_LENGTH),
+                axum::http::HeaderName::from_static(constant::HEADER_UPLOAD_OFFSET),
+                axum::http::HeaderName::from_static(constant::HEADER_UPLOAD_METADATA),
+                axum::http::HeaderName::from_static(constant::HEADER_UPLOAD_DEFER_LENGTH),
             ])
     };
 
@@ -116,8 +122,13 @@ pub fn create_router(state: AppState, cfg: &AppConfig) -> Router {
         .layer(mw::from_fn(middleware::auth::auth_layer))
         .layer(extensions_layer);
 
+    // Tus OPTIONS 不需要认证（协议要求）
+    let tus_options_route = Router::new()
+        .route("/upload/tus", axum::routing::options(api::tus::tus_options));
+
     let mut router = Router::new()
         .nest("/api/v1", api_routes)
+        .nest("/api/v1", tus_options_route)
         .route("/health", axum::routing::get(health_check));
 
     router = router.fallback(crate::embed::fallback);

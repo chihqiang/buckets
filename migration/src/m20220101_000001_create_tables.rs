@@ -17,22 +17,40 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null()
                             .auto_increment()
-                            .primary_key(),
+                            .primary_key()
+                            .comment("用户 ID，自增主键"),
                     )
-                    .col(ColumnDef::new(Users::Email).string_len(256).not_null())
-                    .col(ColumnDef::new(Users::Password).string_len(256).not_null())
-                    .col(ColumnDef::new(Users::SecretKey).string_len(128).null())
+                    .col(
+                        ColumnDef::new(Users::Email)
+                            .string_len(256)
+                            .not_null()
+                            .comment("登录邮箱，唯一"),
+                    )
+                    .col(
+                        ColumnDef::new(Users::Password)
+                            .string_len(256)
+                            .not_null()
+                            .comment("密码哈希值"),
+                    )
+                    .col(
+                        ColumnDef::new(Users::SecretKey)
+                            .string_len(128)
+                            .null()
+                            .comment("密钥（用于 API 签名认证）"),
+                    )
                     .col(
                         ColumnDef::new(Users::CreatedAt)
                             .timestamp()
                             .not_null()
-                            .default(Expr::current_timestamp()),
+                            .default(Expr::current_timestamp())
+                            .comment("创建时间"),
                     )
                     .col(
                         ColumnDef::new(Users::UpdatedAt)
                             .timestamp()
                             .not_null()
-                            .default(Expr::current_timestamp()),
+                            .default(Expr::current_timestamp())
+                            .comment("更新时间"),
                     )
                     .to_owned(),
             )
@@ -61,56 +79,106 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null()
                             .auto_increment()
-                            .primary_key(),
+                            .primary_key()
+                            .comment("对象 ID，自增主键"),
                     )
-                    .col(ColumnDef::new(Objects::Uuid).string_len(36).not_null())
-                    .col(ColumnDef::new(Objects::Name).string_len(1024).not_null())
-                    .col(ColumnDef::new(Objects::Size).big_integer().not_null())
-                    .col(ColumnDef::new(Objects::Md5).string_len(64).not_null())
-                    .col(ColumnDef::new(Objects::ContentType).string_len(256).null())
-                    .col(ColumnDef::new(Objects::Extension).string_len(64).null())
+                    .col(
+                        ColumnDef::new(Objects::Uuid)
+                            .string_len(36)
+                            .not_null()
+                            .comment("对象 UUID，唯一标识"),
+                    )
+                    .col(
+                        ColumnDef::new(Objects::Name)
+                            .string_len(1024)
+                            .not_null()
+                            .comment("文件名"),
+                    )
+                    .col(
+                        ColumnDef::new(Objects::Size)
+                            .big_integer()
+                            .not_null()
+                            .comment("文件大小（字节）"),
+                    )
+                    .col(
+                        ColumnDef::new(Objects::Md5)
+                            .string_len(64)
+                            .not_null()
+                            .comment("文件 MD5 值"),
+                    )
+                    .col(
+                        ColumnDef::new(Objects::ContentType)
+                            .string_len(256)
+                            .null()
+                            .comment("MIME 类型"),
+                    )
+                    .col(
+                        ColumnDef::new(Objects::Extension)
+                            .string_len(64)
+                            .null()
+                            .comment("文件扩展名"),
+                    )
                     .col(
                         ColumnDef::new(Objects::Bucket)
                             .string_len(256)
                             .not_null()
-                            .default("default"),
+                            .default("default")
+                            .comment("所属存储桶"),
                     )
-                    .col(ColumnDef::new(Objects::StoragePath).text().not_null())
+                    .col(
+                        ColumnDef::new(Objects::StoragePath)
+                            .text()
+                            .not_null()
+                            .comment("文件存储路径"),
+                    )
                     .col(
                         ColumnDef::new(Objects::ImageWidth)
                             .big_integer()
                             .not_null()
-                            .default(0),
+                            .default(0)
+                            .comment("图片宽度（非图片时为 0）"),
                     )
                     .col(
                         ColumnDef::new(Objects::ImageHeight)
                             .big_integer()
                             .not_null()
-                            .default(0),
+                            .default(0)
+                            .comment("图片高度（非图片时为 0）"),
                     )
                     .col(
                         ColumnDef::new(Objects::ImageType)
                             .string_len(32)
                             .not_null()
-                            .default(""),
+                            .default("")
+                            .comment("图片类型"),
                     )
                     .col(
                         ColumnDef::new(Objects::Status)
                             .string_len(32)
                             .not_null()
-                            .default("active"),
+                            .default("active")
+                            .comment("状态：active / deleted"),
+                    )
+                    .col(
+                        ColumnDef::new(Objects::UploadMethod)
+                            .string_len(32)
+                            .not_null()
+                            .default("chunked")
+                            .comment("上传方式：chunked（分片）/ tus（可恢复上传）"),
                     )
                     .col(
                         ColumnDef::new(Objects::CreatedAt)
                             .timestamp()
                             .not_null()
-                            .default(Expr::current_timestamp()),
+                            .default(Expr::current_timestamp())
+                            .comment("创建时间"),
                     )
                     .col(
                         ColumnDef::new(Objects::UpdatedAt)
                             .timestamp()
                             .not_null()
-                            .default(Expr::current_timestamp()),
+                            .default(Expr::current_timestamp())
+                            .comment("更新时间"),
                     )
                     .to_owned(),
             )
@@ -156,18 +224,21 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(UserObjects::UserId)
                             .big_integer()
-                            .not_null(),
+                            .not_null()
+                            .comment("用户 ID"),
                     )
                     .col(
                         ColumnDef::new(UserObjects::ObjectId)
                             .big_integer()
-                            .not_null(),
+                            .not_null()
+                            .comment("对象 ID"),
                     )
                     .col(
                         ColumnDef::new(UserObjects::CreatedAt)
                             .timestamp()
                             .not_null()
-                            .default(Expr::current_timestamp()),
+                            .default(Expr::current_timestamp())
+                            .comment("关联创建时间"),
                     )
                     .primary_key(
                         IndexCreateStatement::new()
@@ -199,71 +270,110 @@ impl MigrationTrait for Migration {
                             .big_integer()
                             .not_null()
                             .auto_increment()
-                            .primary_key(),
+                            .primary_key()
+                            .comment("上传任务 ID，自增主键"),
                     )
-                    .col(ColumnDef::new(UploadTasks::Uuid).string_len(36).not_null())
+                    .col(
+                        ColumnDef::new(UploadTasks::Uuid)
+                            .string_len(36)
+                            .not_null()
+                            .comment("任务 UUID，唯一标识"),
+                    )
                     .col(
                         ColumnDef::new(UploadTasks::ObjectId)
                             .string_len(36)
-                            .not_null(),
+                            .not_null()
+                            .comment("关联对象 UUID"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::FileMd5)
                             .string_len(64)
-                            .not_null(),
+                            .not_null()
+                            .comment("文件 MD5（分片上传预检提供，tus 完成后填充）"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::FileSize)
                             .big_integer()
-                            .not_null(),
+                            .not_null()
+                            .comment("文件总大小（字节）"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::ChunkSize)
                             .big_integer()
-                            .not_null(),
+                            .not_null()
+                            .comment("分片大小（分片上传；tus 上传为 0）"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::ChunkCount)
                             .big_integer()
-                            .not_null(),
+                            .not_null()
+                            .comment("分片总数（分片上传；tus 上传为 0）"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::UserId)
                             .big_integer()
-                            .not_null(),
+                            .not_null()
+                            .comment("上传用户 ID"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::Status)
                             .string_len(32)
                             .not_null()
-                            .default("initialized"),
+                            .default("initialized")
+                            .comment("任务状态：initialized / uploading / completed / failed / expired"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::UploadedBitmap)
                             .text()
-                            .not_null(),
+                            .not_null()
+                            .comment("已上传分片位图（分片上传；tus 上传为空）"),
+                    )
+                    .col(
+                        ColumnDef::new(UploadTasks::UploadMethod)
+                            .string_len(32)
+                            .not_null()
+                            .default("chunked")
+                            .comment("上传方式：chunked（分片）/ tus（可恢复上传）"),
+                    )
+                    .col(
+                        ColumnDef::new(UploadTasks::CurrentOffset)
+                            .big_integer()
+                            .not_null()
+                            .default(0)
+                            .comment("当前已上传数据量（字节；仅 tus 使用）"),
+                    )
+                    .col(
+                        ColumnDef::new(UploadTasks::IsDeferred)
+                            .boolean()
+                            .not_null()
+                            .default(false)
+                            .comment("是否使用 Upload-Defer-Length 扩展（tus 延迟设置文件大小）"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::LastActivityAt)
                             .big_integer()
-                            .null(),
+                            .null()
+                            .comment("最后活动时间戳（秒）"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::CreatedAt)
                             .timestamp()
                             .not_null()
-                            .default(Expr::current_timestamp()),
+                            .default(Expr::current_timestamp())
+                            .comment("创建时间"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::UpdatedAt)
                             .timestamp()
                             .not_null()
-                            .default(Expr::current_timestamp()),
+                            .default(Expr::current_timestamp())
+                            .comment("更新时间"),
                     )
                     .col(
                         ColumnDef::new(UploadTasks::ExpiresAt)
                             .timestamp()
-                            .not_null(),
+                            .not_null()
+                            .comment("过期时间（超出后将被清理）"),
                     )
                     .to_owned(),
             )
@@ -396,6 +506,7 @@ enum Objects {
     ImageHeight,
     ImageType,
     Status,
+    UploadMethod,
     CreatedAt,
     UpdatedAt,
 }
@@ -421,6 +532,9 @@ enum UploadTasks {
     UserId,
     Status,
     UploadedBitmap,
+    UploadMethod,
+    CurrentOffset,
+    IsDeferred,
     LastActivityAt,
     CreatedAt,
     UpdatedAt,

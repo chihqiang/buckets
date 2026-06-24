@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useUsersStore } from '../stores/users'
 import type { User } from '../sdk/api'
+import { useDialog } from '../composables/useDialog'
 
 const store = useUsersStore()
 const page = ref(1)
@@ -15,21 +16,34 @@ const editing = ref<number | null>(null)
 const editEmail = ref('')
 const editPassword = ref('')
 
-onMounted(() => store.fetchList(page.value, pageSize))
+const listError = ref('')
+const dialog = useDialog()
+
+onMounted(() => store.fetchList(page.value, pageSize).catch((e: any) => {
+  listError.value = e.message || '加载失败'
+}))
 
 async function handleDelete(id: number) {
-  if (!confirm('确定要删除此用户吗？')) return
-  await store.remove(id)
-  await store.fetchList(page.value, pageSize)
+  if (!(await dialog.confirm('确定要删除此用户吗？'))) return
+  try {
+    await store.remove(id)
+    await store.fetchList(page.value, pageSize)
+  } catch (e: any) {
+    dialog.error(e.message || '删除失败')
+  }
 }
 
 async function handleCreate() {
   if (!createEmail.value || !createPassword.value) return
-  await store.create(createEmail.value, createPassword.value)
-  createEmail.value = ''
-  createPassword.value = ''
-  showCreate.value = false
-  await store.fetchList(page.value, pageSize)
+  try {
+    await store.create(createEmail.value, createPassword.value)
+    createEmail.value = ''
+    createPassword.value = ''
+    showCreate.value = false
+    await store.fetchList(page.value, pageSize)
+  } catch (e: any) {
+    dialog.error(e.message || '创建用户失败')
+  }
 }
 
 function startEdit(u: User) {
@@ -46,14 +60,22 @@ async function handleUpdate(id: number) {
     editing.value = null
     return
   }
-  await store.update(id, payload)
-  editing.value = null
-  await store.fetchList(page.value, pageSize)
+  try {
+    await store.update(id, payload)
+    editing.value = null
+    await store.fetchList(page.value, pageSize)
+  } catch (e: any) {
+    dialog.error(e.message || '更新用户失败')
+  }
 }
 
 async function handleResetSecret(id: number) {
-  if (!confirm('确定要重置此用户的密钥吗？该用户所有现有 Token 将立即失效。')) return
-  await store.resetSecret(id)
+  if (!(await dialog.confirm('确定要重置此用户的密钥吗？该用户所有现有 Token 将立即失效。'))) return
+  try {
+    await store.resetSecret(id)
+  } catch (e: any) {
+    dialog.error(e.message || '重置密钥失败')
+  }
 }
 
 function formatDate(iso: string): string {
@@ -62,7 +84,11 @@ function formatDate(iso: string): string {
 
 async function goPage(p: number) {
   page.value = p
-  await store.fetchList(p, pageSize)
+  try {
+    await store.fetchList(p, pageSize)
+  } catch (e: any) {
+    dialog.error(e.message || '加载失败')
+  }
 }
 </script>
 
@@ -76,6 +102,11 @@ async function goPage(p: number) {
       >
         {{ showCreate ? '取消' : '新建用户' }}
       </button>
+    </div>
+
+    <div v-if="listError" class="mb-4 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-700">
+      <span>{{ listError }}</span>
+      <button @click="listError = ''" class="ml-2 text-red-500 hover:text-red-700">×</button>
     </div>
 
     <div v-if="showCreate" class="mb-4 p-4 bg-white rounded-lg border border-gray-200">

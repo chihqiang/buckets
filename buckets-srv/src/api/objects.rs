@@ -33,6 +33,7 @@ fn into_object_info(f: ObjectRow) -> ObjectInfo {
         extension: f.extension,
         bucket: f.bucket,
         storage_path: f.storage_path,
+        upload_method: f.upload_method,
         image_width: f.image_width,
         image_height: f.image_height,
         image_type: f.image_type,

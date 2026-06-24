@@ -151,3 +151,106 @@ pub async fn expire_and_list_tasks_batch(
 
     Ok(batch)
 }
+
+pub async fn create_tus_upload_task(
+    db: &DatabaseConnection,
+    object_id: Uuid,
+    file_size: i64,
+    user_id: i64,
+    expiration_hours: i64,
+    is_deferred: bool,
+) -> Result<UploadTask, AppError> {
+    let uuid = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let expires_at = now + chrono::TimeDelta::hours(expiration_hours);
+
+    upload_tasks::ActiveModel {
+        uuid: Set(uuid.clone()),
+        object_id: Set(object_id.to_string()),
+        file_md5: Set(String::new()),
+        file_size: Set(file_size),
+        chunk_size: Set(0),
+        chunk_count: Set(0),
+        user_id: Set(user_id),
+        status: Set("initialized".to_string()),
+        uploaded_bitmap: Set("[]".to_string()),
+        upload_method: Set("tus".to_string()),
+        current_offset: Set(0),
+        is_deferred: Set(is_deferred),
+        created_at: Set(now),
+        updated_at: Set(now),
+        expires_at: Set(expires_at),
+        last_activity_at: Set(None),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+
+    let task_uuid =
+        Uuid::parse_str(&uuid).map_err(|e| AppError::Internal(format!("invalid uuid: {}", e)))?;
+    find_upload_task(db, task_uuid)
+        .await?
+        .ok_or_else(|| AppError::Internal("upload task created but not found".into()))
+}
+
+/// 设置 tus 上传完成时的文件大小（Upload-Defer-Length 扩展使用）。
+pub async fn set_upload_file_size(
+    db: &DatabaseConnection,
+    task_id: Uuid,
+    file_size: i64,
+) -> Result<(), AppError> {
+    let now = Utc::now();
+    upload_tasks::Entity::update_many()
+        .filter(upload_tasks::Column::Uuid.eq(task_id.to_string()))
+        .set(upload_tasks::ActiveModel {
+            file_size: Set(file_size),
+            updated_at: Set(now),
+            ..Default::default()
+        })
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+/// 原子地更新 tus 上传的当前偏移量和可选的传输状态。
+/// 也更新 last_activity_at 以保持会话活跃。
+pub async fn update_tus_offset(
+    db: &DatabaseConnection,
+    task_id: Uuid,
+    new_offset: i64,
+    status: Option<&str>,
+) -> Result<(), AppError> {
+    let now = Utc::now();
+    let mut active: upload_tasks::ActiveModel = Default::default();
+    active.current_offset = Set(new_offset);
+    active.last_activity_at = Set(Some(now.timestamp()));
+    active.updated_at = Set(now);
+    if let Some(s) = status {
+        active.status = Set(s.to_string());
+    }
+    upload_tasks::Entity::update_many()
+        .filter(upload_tasks::Column::Uuid.eq(task_id.to_string()))
+        .set(active)
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
+/// 在合并/完成时设置任务的 MD5。
+pub async fn set_task_md5(
+    db: &DatabaseConnection,
+    task_id: Uuid,
+    md5: &str,
+) -> Result<(), AppError> {
+    let now = Utc::now();
+    upload_tasks::Entity::update_many()
+        .filter(upload_tasks::Column::Uuid.eq(task_id.to_string()))
+        .set(upload_tasks::ActiveModel {
+            file_md5: Set(md5.to_string()),
+            updated_at: Set(now),
+            ..Default::default()
+        })
+        .exec(db)
+        .await?;
+    Ok(())
+}

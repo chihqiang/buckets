@@ -56,6 +56,33 @@ pub const SESSION_ACTIVITY_TIMEOUT_SECS: i64 = 3600;
 pub const MAX_SESSION_ACTIVITY_TIMEOUT_SECS: i64 = 172800;
 
 // ============================================================================
+// Tus 协议
+// ============================================================================
+
+pub const TUS_PROTOCOL_VERSION: &str = "1.0.0";
+pub const TUS_UPLOAD_METHOD: &str = "tus";
+pub const CHUNKED_UPLOAD_METHOD: &str = "chunked";
+
+pub const TUS_STAGING_SUBDIR: &str = "tus";
+
+/// Tus 响应/请求中使用的头部。
+pub const HEADER_TUS_RESUMABLE: &str = "Tus-Resumable";
+pub const HEADER_TUS_VERSION: &str = "Tus-Version";
+pub const HEADER_TUS_EXTENSION: &str = "Tus-Extension";
+pub const HEADER_TUS_MAX_SIZE: &str = "Tus-Max-Size";
+pub const HEADER_UPLOAD_LENGTH: &str = "Upload-Length";
+pub const HEADER_UPLOAD_OFFSET: &str = "Upload-Offset";
+pub const HEADER_UPLOAD_METADATA: &str = "Upload-Metadata";
+pub const HEADER_UPLOAD_DEFER_LENGTH: &str = "Upload-Defer-Length";
+pub const HEADER_UPLOAD_EXPIRES: &str = "Upload-Expires";
+
+/// Tus 支持的扩展（逗号分隔）。
+pub const TUS_SUPPORTED_EXTENSIONS: &str = "creation,termination,expiration,creation-defer-length";
+
+/// 默认最大文件大小（10 GB）。
+pub const TUS_DEFAULT_MAX_SIZE: u64 = 10 * 1024 * 1024 * 1024;
+
+// ============================================================================
 // 上传过期时间缩放
 // ============================================================================
 

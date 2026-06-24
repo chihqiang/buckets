@@ -5,9 +5,10 @@
 ## 核心特性
 
 - **分片上传**：大文件切分为可配置大小（默认 8MB）的分片，支持并发上传（默认 4 并发，最大 16）
+- **Tus 可恢复上传**：遵循 tus 1.0.0 协议，支持 POST/PATCH/HEAD/DELETE 标准端点，断点续传零配置
 - **流式写入**：分片数据流式写入磁盘，避免将整个分片加载到内存，杜绝 OOM 风险
 - **秒传**：服务端 MD5 + 文件大小全局去重，相同文件秒级完成，无需重复上传
-- **断点续传**：基于位图（bitmap）记录已上传分片，中断后自动跳过已完成分片，仅上传缺失部分
+- **断点续传**：基于位图（bitmap）记录已上传分片，中断后自动跳过已完成分片，仅上传缺失部分；tus 协议通过 Upload-Offset 头部自动支持
 - **会话级 HMAC 签名**：STS 接口签发会话级签名（有效期 2h），一个签名覆盖整个上传会话，无需逐分片签发
 - **异步合并**：分片合并改为异步后台执行，客户端轮询等待结果，避免 HTTP 长连接超时；合并时使用零拷贝（copy_file_range）和 MD5 侧车文件优化磁盘 I/O
 - **双模认证**：Token 认证（Web 端）与 Basic Auth 认证（CLI 端），自动选择；Token 有效期 7 天，支持刷新
@@ -75,12 +76,12 @@ buckets/
 ├── deploy/
 │   ├── docker-compose.yaml   # 一键部署（MySQL + 应用）
 │   └── nginx.conf            # Nginx 反向代理参考（独立部署用）
-└── docs/                     # 技术文档
-    ├── architecture.md       # 架构设计
-    ├── api.md                # API 接口文档
-    ├── schema.md             # 数据库表结构
-    ├── upload.md             # 文件上传链路详解
-    └── deploy.md             # 部署指南
+└── docs/                         # 技术文档
+    ├── architecture.md           # 架构设计
+    ├── schema.md                 # 数据库表结构
+    ├── upload-chunked.md         # 分片上传链路详解
+    ├── upload-tus.md             # Tus 可恢复上传协议详解
+    └── deploy.md                 # 部署指南
 ```
 
 ## 子包说明
@@ -240,6 +241,17 @@ Authorization: Basic base64("email:password")
 - 认证成功缓存 30 分钟（DashMap 内存缓存），减少 DB 压力
 - 认证失败按 IP 限流（Token Bucket，突发 10 次），防止暴力破解密码
 
+### JWT 结构
+
+Access Token 使用 HS256 签名，用 `users.secret_key` 每条用户独立签名：
+
+```json
+header: { "alg": "HS256", "kid": "user_id" }
+payload: { "sub": user_id, "iat": ..., "exp": ..., "jti": "uuid" }
+```
+
+Refresh Token 使用全局 `REFRESH_TOKEN_KEY` 签名，有效期与 Access Token 同为 7 天。
+
 ### 认证优先级
 
 统一认证中间件按以下优先级处理：
@@ -247,6 +259,71 @@ Authorization: Basic base64("email:password")
 2. `Authorization: Basic base64(email:password)` — Basic Auth 认证（CLI 回退）
 
 Bearer Token 无效时不会回退到 Basic Auth，直接返回 401。
+
+### 认证缓存
+
+- **AuthCache**：Basic Auth 认证结果缓存 30 分钟（DashMap），减少 DB 压力
+- **BasicAuthFailLimiter**：按 IP 限流（Token Bucket，突发 10 次），防止暴力破解密码
+- **JwtFailLimiter**：JWT 验证失败按 IP 限流
+
+### TraceID 链路追踪
+
+所有请求支持 `X-Trace-Id` 请求头用于链路追踪：
+
+```bash
+X-Trace-Id: 550e8400-e29b-41d4-a716-446655440000
+```
+
+- CLI 客户端自动生成 trace_id（UUID v4）并随每个请求发送
+- 服务端在响应头中回写相同的 `X-Trace-Id`
+- 服务端每条请求日志带有 `[{trace_id}]` 前缀
+- 排查问题时用 trace_id 在服务端日志中 `grep` 即可定位完整请求链路
+
+### 通用响应格式
+
+**成功响应**：
+```json
+{ "code": 200, "message": "ok", "data": { ... } }
+```
+
+**错误响应**：
+```json
+{ "code": 400, "message": "具体错误描述", "data": null }
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| code | u32 | 状态码（同 HTTP status） |
+| message | String | 状态描述 |
+| data | T / null | 业务数据 |
+
+### 通用错误码
+
+| code | 含义 | 说明 |
+|------|------|------|
+| 200 | 成功 | 请求处理完成 |
+| 400 | 参数错误 | 缺少必填字段、格式错误等 |
+| 401 | 认证/签名失败 | Basic Auth 无效、签名过期/无效 |
+| 403 | 权限不足 | 速率限制触发（请求频率/并发/每日配额） |
+| 404 | 资源不存在 | task_id / object_id 未找到 |
+| 409 | 冲突 | MD5 不匹配、分片不完整、分片已存在、tus offset 不匹配 |
+| 413 | 文件过大 | 分片/文件超过大小限制 |
+| 415 | 文件类型不支持 | 扩展名不在白名单（严格模式） |
+| 500 | 服务端错误 | 内部错误、数据库/存储异常（错误详情脱敏） |
+
+## 会话签名机制
+
+分片上传使用会话级 HMAC-SHA256 签名授权整个上传会话中的所有 chunk 上传：
+
+```rust
+message = "session:{user_id}:{task_id}:{file_md5}:{chunk_size}:{timestamp}:{salt}"
+signature = hex(HMAC-SHA256(secret_key, message))
+```
+
+- **签发**：STS 接口生成，返回 `session_signature` + `session_timestamp` + `session_salt`
+- **验证**：每片上传时通过 `X-Session-Signature`、`X-Session-Timestamp`、`X-Session-Salt` 头部传递
+- **有效期**：2 小时（由 `verify_session_timestamp()` 校验）
+- **盐值**：每次 STS 调用随机生成，防止重放
 
 ## 秒传机制
 
@@ -267,6 +344,30 @@ Bearer Token 无效时不会回退到 Basic Auth，直接返回 401。
 | 最大并发 | 5 个 | `RATE_LIMIT_MAX_CONCURRENT` | 同时进行中的上传任务数 |
 | 每日配额 | 50 次 | `RATE_LIMIT_DAILY_QUOTA` | 每日上传请求次数限制 |
 
+## 健康检查
+
+```
+GET /health
+```
+
+无需认证。返回服务状态：
+
+```json
+{
+    "status": "ok",
+    "db_ok": true,
+    "disk_available_bytes": 107374182400,
+    "disk_usage_percent": 45.2
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| status | String | `ok`=正常，`degraded`=降级（数据库不可用或磁盘使用率 >90%） |
+| db_ok | bool | 数据库连接是否正常 |
+| disk_available_bytes | u64 / null | 可用磁盘空间（字节），非 Linux 环境为 null |
+| disk_usage_percent | f64 / null | 磁盘使用率百分比，非 Linux 环境为 null |
+
 ## 后台任务
 
 | 任务 | 间隔 | 说明 |
@@ -282,14 +383,18 @@ Bearer Token 无效时不会回退到 Basic Auth，直接返回 401。
 
 ```bash
 data/
-├── objects/          # 已合并完成的对象文件（按用户/日期分片路径）
+├── objects/                  # 已合并完成的对象文件（按用户/日期分片路径）
 │   └── <user_id>/<YYYYMMDD>/<uuid>.<ext>
-├── staging/          # 分片暂存目录（上传中）
-│   └── <task_id>/
-│       ├── chunk_000000
-│       ├── chunk_000001.md5      # MD5 侧车文件（优化合并 I/O）
-│       └── ...
-└── cache/            # 上传会话缓存
+├── staging/                  # 分片暂存目录（上传中）
+│   ├── <task_id>/
+│   │   ├── chunk_000000
+│   │   ├── chunk_000001.md5  # MD5 侧车文件（优化合并 I/O）
+│   │   └── ...
+│   └── tus/                  # Tus 暂存目录
+│       └── <task_id>/
+│           ├── data          # 追加写入的上传数据
+│           └── meta.json     # 上传元数据
+└── cache/                    # 上传会话缓存
 ```
 
 ## 编译
@@ -350,9 +455,9 @@ cargo test -p buckets-common
 ## 文档
 
 - [架构设计](docs/architecture.md) — 整体架构、分层设计、核心流程详解
-- [API 接口](docs/api.md) — 完整 API 接口文档（含 Token 认证）
 - [数据库表结构](docs/schema.md) — 4 张表详细设计，位图机制
-- [上传链路详解](docs/upload.md) — 从 CLI 到服务端的分片上传完整链路
+- [分片上传详解](docs/upload-chunked.md) — 从 CLI 到服务端的分片上传完整链路
+- [Tus 可恢复上传](docs/upload-tus.md) — Tus 协议实现，OPTIONS/POST/HEAD/PATCH/DELETE 端点
 - [部署指南](docs/deploy.md) — 环境要求、Docker、生产部署建议
 
 ## License

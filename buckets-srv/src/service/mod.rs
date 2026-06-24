@@ -3,3 +3,4 @@
 pub mod auth_svc;
 pub mod chunk_svc;
 pub mod file_svc;
+pub mod tus_svc;

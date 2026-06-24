@@ -104,6 +104,44 @@ export class Client {
     return this.parseResponse<T>(res)
   }
 
+  /**
+   * 原生 HTTP 请求，返回原始 Response 对象（可读取自定义响应头）。
+   * 用于 tus 等需要读取 Location、Upload-Offset 等响应头的场景。
+   */
+  async requestRaw(method: string, path: string, options?: {
+    headers?: Record<string, string>
+    body?: BodyInit | null
+  }): Promise<Response> {
+    const url = `${this.options.baseUrl}${path}`
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.options.token}`,
+      ...options?.headers,
+    }
+    const init: RequestInit = { method, headers }
+    if (options?.body !== undefined) {
+      init.body = options.body
+    }
+    const res = await fetch(url, init)
+    if (!res.ok) {
+      const traceId = res.headers.get('x-trace-id') || '-'
+      const text = await res.text()
+      let message: string
+      try {
+        message = JSON.parse(text).message || res.statusText
+      } catch {
+        message = text || res.statusText
+      }
+      throw new ClientError(`[${traceId}] ${message}`, res.status)
+    }
+    return res
+  }
+
+  /** 无认证的原生 HTTP 请求（用于 tus OPTIONS 等公开端点） */
+  async requestPublicRaw(method: string, path: string): Promise<Response> {
+    const url = `${this.options.baseUrl}${path}`
+    return fetch(url, { method })
+  }
+
   private async parseResponse<T>(res: Response): Promise<T> {
     const traceId = res.headers.get('x-trace-id') || '-'
 

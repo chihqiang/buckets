@@ -18,6 +18,7 @@ pub mod objects;
 pub mod merge;
 pub mod precheck;
 pub mod sts;
+pub mod tus;
 pub mod users;
 
 use crate::app::AppState;
@@ -26,7 +27,7 @@ use axum::extract::DefaultBodyLimit;
 use axum::middleware as mw;
 use axum::{
     Router,
-    routing::{delete, get, post, put},
+    routing::{delete, get, head, patch, post, put},
 };
 
 /// 构建组合的 API 路由。
@@ -63,6 +64,10 @@ pub fn routes() -> Router<AppState> {
         .route("/upload/chunk/status", post(chunk::chunk_status))
         .route("/upload/merge", post(merge::merge_chunks))
         .route("/upload/merge/status", get(merge::merge_status))
+        .route("/upload/tus", post(tus::tus_create))
+        .route("/upload/tus/{task_id}", head(tus::tus_head))
+        .route("/upload/tus/{task_id}", patch(tus::tus_patch))
+        .route("/upload/tus/{task_id}", delete(tus::tus_terminate))
         // 应用于所有上传端点的上传速率限制中间件
         .layer(mw::from_fn(ratelimit::upload_ratelimit))
         // 请求体限制，防止超大请求导致 OOM

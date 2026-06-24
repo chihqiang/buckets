@@ -2,7 +2,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useObjectsStore } from '../stores/objects'
 import { useAuthStore } from '../stores/auth'
-import { Client, ChunkUploader } from '../sdk'
+import { Client, ChunkUploader, TusUploader } from '../sdk'
 import { useDialog } from '../composables/useDialog'
 
 const store = useObjectsStore()
@@ -16,6 +16,11 @@ const uploadProgress = ref(0)
 const uploadStatus = ref<'idle' | 'computing' | 'uploading' | 'merging' | 'completed' | 'error'>('idle')
 const uploadError = ref('')
 
+const tusUploading = ref(false)
+const tusUploadProgress = ref(0)
+const tusUploadStatus = ref<'idle' | 'uploading' | 'completed' | 'error'>('idle')
+const tusUploadError = ref('')
+
 const statusText = computed(() => {
   switch (uploadStatus.value) {
     case 'computing': return '正在计算文件哈希...'
@@ -27,7 +32,21 @@ const statusText = computed(() => {
   }
 })
 
-onMounted(() => store.fetchList(page.value, pageSize))
+const tusStatusText = computed(() => {
+  switch (tusUploadStatus.value) {
+    case 'uploading': return `tus 上传中 ${tusUploadProgress.value}%`
+    case 'completed': return 'tus 上传完成'
+    case 'error': return tusUploadError.value || 'tus 上传失败'
+    default: return ''
+  }
+})
+
+const listError = ref('')
+const dialog = useDialog()
+
+onMounted(() => store.fetchList(page.value, pageSize).catch((e: any) => {
+  listError.value = e.message || '加载失败'
+}))
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -37,9 +56,13 @@ function formatSize(bytes: number): string {
 }
 
 async function handleDelete(id: number) {
-  if (!(await confirm('确定要删除此文件吗？'))) return
-  await store.remove(id)
-  await store.fetchList(page.value, pageSize)
+  if (!(await dialog.confirm('确定要删除此文件吗？'))) return
+  try {
+    await store.remove(id)
+    await store.fetchList(page.value, pageSize)
+  } catch (e: any) {
+    dialog.error(e.message || '删除失败')
+  }
 }
 
 function formatDate(iso: string): string {
@@ -48,7 +71,11 @@ function formatDate(iso: string): string {
 
 async function goPage(p: number) {
   page.value = p
-  await store.fetchList(p, pageSize)
+  try {
+    await store.fetchList(p, pageSize)
+  } catch (e: any) {
+    dialog.error(e.message || '加载失败')
+  }
 }
 
 async function handleUpload() {
@@ -83,19 +110,61 @@ async function handleUpload() {
   }
   input.click()
 }
+
+async function handleTusUpload() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.onchange = async () => {
+    const file = input.files?.[0]
+    if (!file) return
+
+    const client = new Client({ baseUrl: '', token: auth.token })
+    const uploader = new TusUploader(client)
+    tusUploading.value = true
+    tusUploadProgress.value = 0
+    tusUploadStatus.value = 'uploading'
+    tusUploadError.value = ''
+
+    try {
+      await uploader.upload(file, {
+        onProgress: (p) => {
+          tusUploadProgress.value = p.percent
+          tusUploadStatus.value = 'uploading'
+        },
+      })
+      tusUploadStatus.value = 'completed'
+      await store.fetchList(page.value, pageSize)
+    } catch (err: any) {
+      tusUploadStatus.value = 'error'
+      tusUploadError.value = err.message || String(err)
+    } finally {
+      tusUploading.value = false
+    }
+  }
+  input.click()
+}
 </script>
 
 <template>
   <div>
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold text-gray-800">文件管理</h2>
-      <button
-        @click="handleUpload"
-        :disabled="uploading"
-        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {{ uploading ? '上传中...' : '上传文件' }}
-      </button>
+      <div class="flex gap-2">
+        <button
+          @click="handleUpload"
+          :disabled="uploading"
+          class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ uploading ? '分片上传中...' : '上传文件(分片)' }}
+        </button>
+        <button
+          @click="handleTusUpload"
+          :disabled="tusUploading"
+          class="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {{ tusUploading ? 'tus 上传中...' : '上传文件(tus)' }}
+        </button>
+      </div>
     </div>
 
     <div
@@ -113,6 +182,29 @@ async function handleUpload() {
       </div>
       <div v-if="uploadStatus === 'uploading'" class="mt-2 w-full bg-blue-200 rounded-full h-2">
         <div class="bg-blue-600 h-2 rounded-full transition-all duration-300" :style="{ width: uploadProgress + '%' }" />
+      </div>
+    </div>
+
+    <div v-if="listError" class="mb-4 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-700">
+      <span>{{ listError }}</span>
+      <button @click="listError = ''" class="ml-2 text-red-500 hover:text-red-700">×</button>
+    </div>
+
+    <div
+      v-if="tusUploading || tusUploadStatus === 'completed' || tusUploadStatus === 'error'"
+      class="mb-4 p-3 rounded-lg border text-sm"
+      :class="{
+        'bg-yellow-50 border-yellow-200 text-yellow-700': tusUploadStatus === 'uploading',
+        'bg-green-50 border-green-200 text-green-700': tusUploadStatus === 'completed',
+        'bg-red-50 border-red-200 text-red-700': tusUploadStatus === 'error',
+      }"
+    >
+      <div class="flex items-center gap-2">
+        <span v-if="tusUploadStatus === 'uploading'" class="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        <span>{{ tusStatusText }}</span>
+      </div>
+      <div v-if="tusUploadStatus === 'uploading'" class="mt-2 w-full bg-yellow-200 rounded-full h-2">
+        <div class="bg-yellow-600 h-2 rounded-full transition-all duration-300" :style="{ width: tusUploadProgress + '%' }" />
       </div>
     </div>
 
