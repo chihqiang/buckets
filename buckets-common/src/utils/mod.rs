@@ -2,6 +2,7 @@
 
 pub mod crypto;
 pub mod hash;
+pub mod image;
 pub mod password;
 pub mod path;
 pub mod validate;

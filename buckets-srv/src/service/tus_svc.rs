@@ -5,7 +5,7 @@ use md5::{Digest, Md5};
 use buckets_common::constant;
 use buckets_common::error::AppError;
 use buckets_common::model::db::{ObjectStatus, TaskStatus, UploadTask, objects, upload_tasks};
-use buckets_common::utils::path;
+use buckets_common::utils::{image, path};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
@@ -335,6 +335,16 @@ async fn complete_upload(
         None
     };
 
+    let (image_width, image_height, image_type_str) = if effective_content_type.as_deref().is_some_and(|ct| ct.starts_with("image/")) {
+        let path = output_path.clone();
+        tokio::task::spawn_blocking(move || image::detect_image_dims(&path))
+            .await
+            .map_err(|e| AppError::Internal(format!("image detect panicked: {}", e)))?
+            .unwrap_or((0, 0, String::new()))
+    } else {
+        (0i64, 0i64, String::new())
+    };
+
     let txn = db.begin().await?;
 
     let result = objects::Entity::insert(objects::ActiveModel {
@@ -346,9 +356,9 @@ async fn complete_upload(
         extension: Set(Some(meta.extension)),
         bucket: Set(constant::DEFAULT_BUCKET.to_string()),
         storage_path: Set(storage_path_str.clone()),
-        image_width: Set(0),
-        image_height: Set(0),
-        image_type: Set(String::new()),
+        image_width: Set(image_width),
+        image_height: Set(image_height),
+        image_type: Set(image_type_str),
         status: Set(ObjectStatus::Active.as_str().to_string()),
         upload_method: Set(constant::TUS_UPLOAD_METHOD.to_string()),
         created_at: Set(now),

@@ -19,8 +19,7 @@ use buckets_common::error::AppError;
 use buckets_common::model::api::{MergeResult, PrecheckResult};
 use buckets_common::model::db::{ObjectStatus, TaskStatus};
 use buckets_common::model::db::{objects, upload_tasks};
-use buckets_common::utils::path;
-use buckets_common::utils::validate;
+use buckets_common::utils::{image, path, validate};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
 };
@@ -326,16 +325,12 @@ pub async fn merge(
         .or_else(|| detect_mime_from_extension(file_name));
 
     // 如果文件是图片，检测图片尺寸
-    let (image_width, image_height, image_type_str) = if let Some(ref ct) = effective_content_type {
-        if ct.starts_with("image/") {
-            let path = output_path.clone();
-            tokio::task::spawn_blocking(move || detect_image_dims(&path))
-                .await
-                .map_err(|e| AppError::Internal(format!("image detect panicked: {}", e)))?
-                .unwrap_or((0, 0, String::new()))
-        } else {
-            (0i64, 0i64, String::new())
-        }
+    let (image_width, image_height, image_type_str) = if effective_content_type.as_deref().is_some_and(|ct| ct.starts_with("image/")) {
+        let path = output_path.clone();
+        tokio::task::spawn_blocking(move || image::detect_image_dims(&path))
+            .await
+            .map_err(|e| AppError::Internal(format!("image detect panicked: {}", e)))?
+            .unwrap_or((0, 0, String::new()))
     } else {
         (0i64, 0i64, String::new())
     };
@@ -629,106 +624,3 @@ fn detect_mime_from_extension(file_name: &str) -> Option<String> {
     Some(mime.to_string())
 }
 
-/// 通过读取魔数从最终文件检测图片尺寸和类型。
-/// 支持 JPEG、PNG、GIF、WebP、BMP。失败时返回默认值。
-fn detect_image_dims(path: &std::path::Path) -> Result<(i64, i64, String), AppError> {
-    use std::io::Read;
-
-    let mut file = std::fs::File::open(path)
-        .map_err(|e| AppError::Internal(format!("open file for image detect: {}", e)))?;
-
-    // 读取足够所有常见图片头部的数据（JPEG SOF 可能在 EXIF 之后更深的位置）
-    let mut buf = vec![0u8; 4096];
-    let n = file
-        .read(&mut buf)
-        .map_err(|e| AppError::Internal(format!("read file for image detect: {}", e)))?;
-    let header = &buf[..n];
-
-    // JPEG：以 FF D8 FF 开头
-    if n >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF {
-        let mut pos = 2;
-        while pos + 9 < n {
-            if header[pos] == 0xFF && matches!(header[pos + 1], 0xC0..=0xC2) {
-                let height = u16::from_be_bytes([header[pos + 5], header[pos + 6]]);
-                let width = u16::from_be_bytes([header[pos + 7], header[pos + 8]]);
-                return Ok((width as i64, height as i64, "jpeg".into()));
-            }
-            pos += 1;
-        }
-        return Ok((0, 0, "jpeg".into())); // 已知为 jpeg 但未在头部窗口中找到尺寸
-    }
-
-    // PNG：魔数 89 50 4E 47 0D 0A 1A 0A，IHDR 在偏移 16 处
-    if n >= 24 && header[0] == 0x89 && header[1] == b'P' && header[2] == b'N' && header[3] == b'G' {
-        let width = u32::from_be_bytes([header[16], header[17], header[18], header[19]]);
-        let height = u32::from_be_bytes([header[20], header[21], header[22], header[23]]);
-        return Ok((width as i64, height as i64, "png".into()));
-    }
-
-    // GIF：魔数 "GIF87a" 或 "GIF89a"，尺寸在偏移 6 处（小端）
-    if n >= 10
-        && (header[0] == b'G'
-            && header[1] == b'I'
-            && header[2] == b'F'
-            && (header[3] == b'8' && (header[4] == b'7' || header[4] == b'9') && header[5] == b'a'))
-    {
-        let width = u16::from_le_bytes([header[6], header[7]]);
-        let height = u16::from_le_bytes([header[8], header[9]]);
-        return Ok((width as i64, height as i64, "gif".into()));
-    }
-
-    // BMP：魔数 "BM"，尺寸在偏移 18 处（小端）
-    if n >= 26 && header[0] == b'B' && header[1] == b'M' {
-        let width = u32::from_le_bytes([header[18], header[19], header[20], header[21]]);
-        let height = u32::from_le_bytes([header[22], header[23], header[24], header[25]]);
-        return Ok((width as i64, height as i64, "bmp".into()));
-    }
-
-    // WebP：RIFF + 大小 + WEBP
-    if n >= 30
-        && header[0] == b'R'
-        && header[1] == b'I'
-        && header[2] == b'F'
-        && header[3] == b'F'
-        && header[8] == b'W'
-        && header[9] == b'E'
-        && header[10] == b'B'
-        && header[11] == b'P'
-    {
-        let fourcc = &header[12..16];
-        if fourcc == b"VP8 " && n >= 30 {
-            // VP8 关键帧：宽/高在偏移 26 处（小端，16 像素对齐）
-            let raw = u16::from_le_bytes([header[26], header[27]]);
-            let width = (raw & 0x3FFF) as u32;
-            let raw = u16::from_le_bytes([header[28], header[29]]);
-            let height = (raw & 0x3FFF) as u32;
-            if width > 0 && height > 0 {
-                return Ok((width as i64, height as i64, "webp".into()));
-            }
-        } else if fourcc == b"VP8L" && n >= 25 {
-            // VP8L 无损：宽/高打包在偏移 21 处的 4 个字节中
-            let bits = u32::from_le_bytes([header[21], header[22], header[23], header[24]]);
-            let width = (bits & 0x3FFF) + 1;
-            let height = ((bits >> 14) & 0x3FFF) + 1;
-            if width > 0 && height > 0 {
-                return Ok((width as i64, height as i64, "webp".into()));
-            }
-        } else if fourcc == b"VP8X" && n >= 30 {
-            // VP8X 扩展：3 字节宽（小端），3 字节高，在偏移 24 处
-            let width = u24_le(&header[24..27]);
-            let height = u24_le(&header[27..30]);
-            if width > 0 && height > 0 {
-                return Ok((width as i64, height as i64, "webp".into()));
-            }
-        }
-        return Ok((0, 0, "webp".into()));
-    }
-
-    // 未知格式——返回默认值
-    Ok((0, 0, String::new()))
-}
-
-/// 从字节切片解析 24 位小端值（必须至少 3 字节）。
-fn u24_le(bytes: &[u8]) -> u32 {
-    bytes[0] as u32 | (bytes[1] as u32) << 8 | (bytes[2] as u32) << 16
-}
