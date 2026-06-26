@@ -29,7 +29,7 @@ export class TusUploader {
     }
 
     if (metadata && Object.keys(metadata).length > 0) {
-      const pairs = Object.entries(metadata).map(([key, value]) => `${key} ${btoa(value)}`)
+      const pairs = Object.entries(metadata).map(([key, value]) => `${key} ${btoa(unescape(encodeURIComponent(value)))}`)
       headers['Upload-Metadata'] = pairs.join(',')
     }
 
