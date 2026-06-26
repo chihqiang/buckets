@@ -15,6 +15,7 @@
 pub mod auth;
 pub mod chunk;
 pub mod direct;
+pub mod download;
 pub mod merge;
 pub mod objects;
 pub mod precheck;
@@ -43,8 +44,9 @@ pub fn routes() -> Router<AppState> {
 
     // 非上传对象路由（无速率限制）
     let object_routes = Router::new()
-        .route("/object/{object_id}", get(sts::get_object_info))
-        .route("/object/{object_id}", delete(sts::delete_object));
+        .route("/object/{id}", get(download::get_object_info))
+        .route("/object/{id}", delete(download::delete_object))
+        .route("/object/{id}/download", get(download::download_object));
 
     // 从环境变量读取最大分块大小，回退到 256 MiB 默认值
     let max_body = std::env::var(buckets_common::constant::ENV_MAX_CHUNK_SIZE)

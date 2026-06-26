@@ -22,6 +22,28 @@ pub async fn find_object_by_md5(
         .map_err(Into::into)
 }
 
+/// 通过自增 ID 查找对象。
+pub async fn find_object_by_id(
+    db: &DatabaseConnection,
+    id: i64,
+) -> Result<Option<ObjectMeta>, AppError> {
+    objects::Entity::find_by_id(id).one(db).await.map_err(Into::into)
+}
+
+/// 通过对象的内部 ID 检查用户是否与该对象关联。
+pub async fn check_user_owns_object_by_id(
+    db: &DatabaseConnection,
+    user_id: i64,
+    object_id: i64,
+) -> Result<bool, AppError> {
+    let count = user_objects::Entity::find()
+        .filter(user_objects::Column::UserId.eq(user_id))
+        .filter(user_objects::Column::ObjectId.eq(object_id))
+        .count(db)
+        .await?;
+    Ok(count > 0)
+}
+
 /// 通过 UUID 查找对象。
 pub async fn find_object_by_uuid(
     db: &DatabaseConnection,
@@ -32,29 +54,6 @@ pub async fn find_object_by_uuid(
         .one(db)
         .await
         .map_err(Into::into)
-}
-
-/// 通过对象的 UUID 检查用户是否与该对象关联（所有者检查）。
-pub async fn check_user_owns_object_by_uuid(
-    db: &DatabaseConnection,
-    user_id: i64,
-    uuid: &str,
-) -> Result<bool, AppError> {
-    let obj = objects::Entity::find()
-        .filter(objects::Column::Uuid.eq(uuid))
-        .one(db)
-        .await?;
-    match obj {
-        Some(o) => {
-            let count = user_objects::Entity::find()
-                .filter(user_objects::Column::UserId.eq(user_id))
-                .filter(user_objects::Column::ObjectId.eq(o.id))
-                .count(db)
-                .await?;
-            Ok(count > 0)
-        }
-        None => Ok(false),
-    }
 }
 
 /// 通过对象的内部 ID 插入用户-对象关联（一个文件可以属于多个用户）。
@@ -83,19 +82,17 @@ pub async fn insert_user_object<C: ConnectionTrait>(
     Ok(())
 }
 
-/// 通过对象的 UUID 移除用户-对象关联。
-/// 如果是最后一个所有者，标记对象为已删除。
+/// 通过对象的自增 ID 移除用户-对象关联。
 /// 所有权检查在事务内部执行，避免 TOCTOU 问题。
 /// 返回 `Err(NotFound)`（对象不存在）或 `Err(Forbidden)`（不属于该用户）。
-pub async fn delete_user_object(
+pub async fn delete_user_object_by_id(
     db: &DatabaseConnection,
     user_id: i64,
-    uuid: &str,
+    object_id: i64,
 ) -> Result<(), AppError> {
     let txn = db.begin().await?;
 
-    let obj = objects::Entity::find()
-        .filter(objects::Column::Uuid.eq(uuid))
+    let obj = objects::Entity::find_by_id(object_id)
         .one(&txn)
         .await?
         .ok_or_else(|| AppError::NotFound("object not found".into()))?;

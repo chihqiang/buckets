@@ -90,15 +90,16 @@ export class HttpClient {
   async requestRaw(method: string, path: string, options?: {
     headers?: Record<string, string>
     body?: BodyInit | null
+    signal?: AbortSignal
   }): Promise<Response> {
     const url = `${this.baseUrl}${path}`
     const headers: Record<string, string> = { ...options?.headers }
-    const init: RequestInit = { method, headers }
+    const init: RequestInit = { method, headers, signal: options?.signal }
     if (options?.body !== undefined) {
       init.body = options.body
     }
 
-    const res = await this.fetchWithTimeout(url, init)
+    const res = await fetch(url, init)
     if (!res.ok) {
       const traceId = res.headers.get('x-trace-id') || '-'
       const text = await res.text()
@@ -121,6 +122,23 @@ export class HttpClient {
   async requestPublicRaw(method: string, path: string): Promise<Response> {
     const url = `${this.baseUrl}${path}`
     return this.fetchWithTimeout(url, { method })
+  }
+
+  async requestBlob(method: string, path: string, extraHeaders?: Record<string, string>): Promise<Blob> {
+    const url = `${this.baseUrl}${path}`
+    const headers: Record<string, string> = { ...extraHeaders }
+    const res = await this.fetchWithTimeout(url, { method, headers })
+    if (!res.ok) {
+      const traceId = res.headers.get('x-trace-id') || '-'
+      const text = await res.text()
+      const message = extractMessage(text, res.statusText)
+      throw new ClientError(`[${traceId}] ${message}`, res.status, traceId)
+    }
+    return res.blob()
+  }
+
+  getBaseUrl(): string {
+    return this.options.baseUrl
   }
 }
 

@@ -19,4 +19,8 @@ export class AuthApi {
   async logout(): Promise<void> {
     await this.client.request<void>('POST', '/api/v1/auth/logout')
   }
+
+  async verify(): Promise<{ user_id: number }> {
+    return this.client.request<{ user_id: number }>('POST', '/api/v1/auth/verify')
+  }
 }

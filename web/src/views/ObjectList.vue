@@ -3,8 +3,9 @@ import { onMounted, ref, computed } from 'vue'
 import { useObjectsStore } from '../stores/objects'
 import { useAuthStore } from '../stores/auth'
 import { BucketsClient } from '@chihqiang/buckets'
-import type { ChunkUploadProgress, TusUploadProgress } from '@chihqiang/buckets'
+import type { ObjectItem, ChunkUploadProgress, TusUploadProgress } from '@chihqiang/buckets'
 import { useDialog } from '../composables/useDialog'
+import { useDownload } from '../composables/useDownload'
 
 const store = useObjectsStore()
 const auth = useAuthStore()
@@ -57,10 +58,20 @@ const directStatusText = computed(() => {
 
 const listError = ref('')
 const dialog = useDialog()
+const dl = useDownload()
 
 onMounted(() => store.fetchList(page.value, pageSize).catch((e: any) => {
   listError.value = e.message || '加载失败'
 }))
+
+function handleDownload(f: ObjectItem) {
+  const s = dl.getState(f.id)
+  if (s.status === 'downloading') {
+    dl.pause(f.id)
+  } else {
+    dl.start(f)
+  }
+}
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -279,17 +290,16 @@ async function handleDirectUpload() {
               <th class="text-left px-4 py-3 font-medium text-gray-600">存储路径</th>
               <th class="text-left px-4 py-3 font-medium text-gray-600">大小</th>
               <th class="text-left px-4 py-3 font-medium text-gray-600">类型</th>
-              <th class="text-left px-4 py-3 font-medium text-gray-600">状态</th>
               <th class="text-left px-4 py-3 font-medium text-gray-600">上传时间</th>
               <th class="text-right px-4 py-3 font-medium text-gray-600">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="store.loading" class="border-b border-gray-100">
-              <td colspan="9" class="px-4 py-8 text-center text-gray-400">加载中...</td>
+              <td colspan="8" class="px-4 py-8 text-center text-gray-400">加载中...</td>
             </tr>
             <tr v-else-if="store.objects.length === 0" class="border-b border-gray-100">
-              <td colspan="9" class="px-4 py-8 text-center text-gray-400">暂无文件</td>
+              <td colspan="8" class="px-4 py-8 text-center text-gray-400">暂无文件</td>
             </tr>
             <tr v-for="f in store.objects" :key="f.id" class="border-b border-gray-100 hover:bg-gray-50">
               <td class="px-4 py-3 text-gray-600 text-xs">{{ f.id }}</td>
@@ -303,22 +313,40 @@ async function handleDirectUpload() {
                   ({{ f.image_width }}x{{ f.image_height }}, {{ f.image_type }})
                 </span>
               </td>
-              <td class="px-4 py-3">
-                <span
-                  class="inline-block px-2 py-0.5 rounded-full text-xs font-medium"
-                  :class="f.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'"
-                >
-                  {{ f.status === 'active' ? '正常' : f.status }}
-                </span>
-              </td>
               <td class="px-4 py-3 text-gray-600 text-xs">{{ formatDate(f.created_at) }}</td>
-              <td class="px-4 py-3 text-right">
-                <button
-                  @click="handleDelete(f.id)"
-                  class="text-red-600 hover:text-red-800 text-sm"
-                >
-                  删除
-                </button>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <div v-if="dl.getState(f.id).status === 'downloading' || dl.getState(f.id).status === 'paused'" class="flex items-center gap-2 mb-1">
+                  <div class="w-20 bg-gray-200 rounded-full h-1.5">
+                    <div class="bg-blue-500 h-1.5 rounded-full transition-all" :style="{ width: dl.getState(f.id).progress + '%' }" />
+                  </div>
+                  <span class="text-xs text-gray-500">{{ dl.getState(f.id).progress }}%</span>
+                </div>
+                <div>
+                  <button
+                    @click="handleDownload(f)"
+                    class="text-sm mr-3"
+                    :class="{
+                      'text-blue-600 hover:text-blue-800': dl.getState(f.id).status === 'idle' || dl.getState(f.id).status === 'completed',
+                      'text-yellow-600 hover:text-yellow-800': dl.getState(f.id).status === 'paused',
+                      'text-gray-400': dl.getState(f.id).status === 'downloading',
+                      'text-red-600 hover:text-red-800': dl.getState(f.id).status === 'error',
+                    }"
+                  >
+                    <template v-if="dl.getState(f.id).status === 'idle' || dl.getState(f.id).status === 'completed'">下载</template>
+                    <template v-else-if="dl.getState(f.id).status === 'downloading'">
+                      <span class="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full align-middle animate-spin mr-1" />
+                      暂停
+                    </template>
+                    <template v-else-if="dl.getState(f.id).status === 'paused'">继续</template>
+                    <template v-else>重试</template>
+                  </button>
+                  <button
+                    @click="handleDelete(f.id)"
+                    class="text-red-600 hover:text-red-800 text-sm"
+                  >
+                    删除
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>

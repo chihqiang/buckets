@@ -15,10 +15,10 @@ export interface ObjectItem {
   extension: string | null
   bucket: string
   storage_path: string | null
+  upload_method: string | null
   image_width: number
   image_height: number
   image_type: string
-  status: string
   created_at: string
   updated_at: string
 }

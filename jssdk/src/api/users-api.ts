@@ -21,6 +21,10 @@ export class UsersApi {
     await this.client.request<void>('DELETE', `/api/v1/users/${id}`)
   }
 
+  async get(id: number): Promise<User> {
+    return this.client.request<User>('GET', `/api/v1/users/${id}`)
+  }
+
   async resetSecretKey(id: number): Promise<void> {
     await this.client.request<void>('POST', `/api/v1/users/${id}/reset-secret-key`)
   }

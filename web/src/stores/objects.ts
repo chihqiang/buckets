@@ -24,5 +24,9 @@ export const useObjectsStore = defineStore('objects', () => {
     await api.objects.delete(id)
   }
 
-  return { objects, total, loading, fetchList, remove }
+  async function download(id: number): Promise<Blob> {
+    return api.objects.downloadBlob(id)
+  }
+
+  return { objects, total, loading, fetchList, remove, download }
 })

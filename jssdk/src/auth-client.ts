@@ -33,6 +33,7 @@ export class AuthClient {
   async requestRaw(method: string, path: string, options?: {
     headers?: Record<string, string>
     body?: BodyInit | null
+    signal?: AbortSignal
   }): Promise<Response> {
     const authHeaders = this.authHeaders()
     const mergedHeaders = options?.headers
@@ -47,5 +48,13 @@ export class AuthClient {
 
   async requestPublicRaw(method: string, path: string): Promise<Response> {
     return this.http.requestPublicRaw(method, path)
+  }
+
+  async requestBlob(method: string, path: string): Promise<Blob> {
+    return this.http.requestBlob(method, path, this.authHeaders())
+  }
+
+  getBaseUrl(): string {
+    return this.http.getBaseUrl()
   }
 }

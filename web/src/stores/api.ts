@@ -33,3 +33,32 @@ export async function logout(): Promise<void> {
   localStorage.removeItem('refresh_token')
   localStorage.removeItem('is_super_admin')
 }
+
+export async function verifyToken(): Promise<boolean> {
+  const token = localStorage.getItem('token')
+  if (!token) return false
+
+  const client = getApi()
+  try {
+    await client.auth.verify()
+    return true
+  } catch {
+    const refreshToken = localStorage.getItem('refresh_token')
+    if (!refreshToken) return false
+
+    try {
+      const data = await client.auth.refreshToken(refreshToken)
+      client.setToken(data.token)
+      localStorage.setItem('token', data.token)
+      localStorage.setItem('refresh_token', data.refresh_token)
+      localStorage.setItem('is_super_admin', String(data.is_super_admin))
+      return true
+    } catch {
+      client.setToken('')
+      localStorage.removeItem('token')
+      localStorage.removeItem('refresh_token')
+      localStorage.removeItem('is_super_admin')
+      return false
+    }
+  }
+}
