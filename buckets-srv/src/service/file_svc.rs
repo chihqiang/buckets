@@ -279,12 +279,9 @@ pub async fn merge(
             .await
             .map_err(|e| AppError::Internal(format!("merge task panicked: {}", e)))?;
 
-    let (computed_md5, total_written) = match merge_result {
+    let (merkle_md5, raw_md5, total_written) = match merge_result {
         Ok(v) => v,
         Err(e) => {
-            // 合并失败时不要删除暂存文件。保留它们以便客户端
-            // 无需重新上传分块即可重试合并。仅标记为失败；
-            // GC 会在过期后清理。
             let _ = dao::update_upload_status(db, task_id, TaskStatus::Failed.as_str()).await;
             return Err(e);
         }
@@ -292,13 +289,12 @@ pub async fn merge(
 
     let temp_path = output_path.with_extension(constant::TEMP_FILE_EXTENSION);
 
-    if computed_md5 != file_md5 {
-        // 哈希不匹配——仅清理临时文件，不清除暂存分块（#5）
+    if merkle_md5 != file_md5 {
         let _ = std::fs::remove_file(&temp_path);
         let _ = dao::update_upload_status(db, task_id, TaskStatus::Failed.as_str()).await;
         return Err(AppError::HashMismatch {
             expected: file_md5.to_string(),
-            actual: computed_md5,
+            actual: merkle_md5,
         });
     }
 
@@ -335,15 +331,37 @@ pub async fn merge(
         (0i64, 0i64, String::new())
     };
 
+    let storage_path_str = output_path.to_string_lossy().to_string();
+
+    // 事务前再做一次全局去重（precheck 可能因时序没拦住）
+    // 使用原始文件 MD5（与直传/TUS 一致），而非 Merkle 哈希
+    if let Some(existing) =
+        dao::find_object_by_md5(db, &raw_md5, constant::DEFAULT_BUCKET, total_written as i64)
+            .await?
+    {
+        let _ = tokio::fs::remove_file(&output_path).await;
+        dao::insert_user_object(db, user_id, existing.id).await?;
+        let _ = dao::update_upload_status(db, task_id, TaskStatus::Completed.as_str()).await;
+        let staging_dir = path::get_chunk_staging_dir(&task_id);
+        if staging_dir.exists() {
+            let _ = tokio::fs::remove_dir_all(&staging_dir).await;
+        }
+        return Ok(MergeResult {
+            object_id: existing.uuid,
+            storage_path: existing.storage_path,
+            size: total_written,
+            md5: raw_md5,
+        });
+    }
+
     // 将数据库操作包装在事务中
     let txn = db.begin().await?;
     let uuid_str = object_id.to_string();
-    let storage_path_str = output_path.to_string_lossy().to_string();
     let result = objects::Entity::insert(objects::ActiveModel {
         uuid: Set(uuid_str.clone()),
         name: Set(file_name.to_string()),
         size: Set(total_written as i64),
-        md5: Set(file_md5.to_string()),
+        md5: Set(raw_md5.clone()),
         content_type: Set(effective_content_type.clone()),
         extension: Set(extension.clone()),
         bucket: Set(constant::DEFAULT_BUCKET.to_string()),
@@ -390,7 +408,7 @@ pub async fn merge(
         object_id: uuid_str.clone(),
         storage_path: storage_path_str.clone(),
         size: total_written,
-        md5: file_md5.to_string(),
+        md5: raw_md5,
     })
 }
 
@@ -406,7 +424,7 @@ fn do_merge_io(
     task_id: &Uuid,
     total: u32,
     output_path: &std::path::Path,
-) -> Result<(String, u64), AppError> {
+) -> Result<(String, String, u64), AppError> {
     use std::io::{Read, Seek, Write};
 
     let temp_path = output_path.with_extension(constant::TEMP_FILE_EXTENSION);
@@ -414,6 +432,8 @@ fn do_merge_io(
         .map_err(|e| AppError::StorageError(format!("create output: {}", e)))?;
 
     let mut hasher = Md5::new();
+    let mut raw_hasher = Md5::new();
+    let mut raw_hasher_complete = true;
     let mut total_written: u64 = 0;
 
     // BufWriter 仅用于回退路径；零拷贝直接写入原始 File。
@@ -445,6 +465,8 @@ fn do_merge_io(
             if !sidecar_md5.is_empty() {
                 hasher.update(sidecar_md5.as_bytes());
             }
+            // sidecar 路径走零拷贝，raw_hasher 无法获取原始字节
+            raw_hasher_complete = false;
         } else {
             // Sidecar 缺失——读取分块数据计算 MD5，并保持文件句柄
             // 打开供回退拷贝路径使用，避免重新打开。
@@ -458,6 +480,7 @@ fn do_merge_io(
                     break;
                 }
                 hasher.update(&buffer[..n]);
+                raw_hasher.update(&buffer[..n]);
             }
         }
 
@@ -518,8 +541,25 @@ fn do_merge_io(
         .sync_all()
         .map_err(|e| AppError::StorageError(format!("fsync output: {}", e)))?;
 
-    let computed_md5 = hex::encode(hasher.finalize());
-    Ok((computed_md5, total_written))
+    // 如果零拷贝跳过了原始字节，从合并文件补算 raw MD5
+    if !raw_hasher_complete {
+        let mut merged_file = std::fs::File::open(&temp_path)
+            .map_err(|e| AppError::StorageError(format!("open merged for raw md5: {}", e)))?;
+        let mut buf = vec![0u8; constant::CHUNK_STREAM_BUFFER_SIZE];
+        loop {
+            let n = merged_file
+                .read(&mut buf)
+                .map_err(|e| AppError::StorageError(format!("read merged for raw md5: {}", e)))?;
+            if n == 0 {
+                break;
+            }
+            raw_hasher.update(&buf[..n]);
+        }
+    }
+
+    let merkle_md5 = hex::encode(hasher.finalize());
+    let raw_md5 = hex::encode(raw_hasher.finalize());
+    Ok((merkle_md5, raw_md5, total_written))
 }
 
 /// 尝试使用 Linux `copy_file_range` 系统调用进行零拷贝合并。
@@ -624,6 +664,23 @@ pub async fn direct_upload_bytes(
 ) -> Result<MergeResult, AppError> {
     validate::validate_file_extension(file_name)?;
 
+    let computed_md5 = format!("{:x}", Md5::digest(data));
+    let total_written = data.len() as u64;
+
+    // 全局去重：相同 MD5 + size 则复用已有对象
+    if let Some(existing) =
+        dao::find_object_by_md5(db, &computed_md5, constant::DEFAULT_BUCKET, total_written as i64)
+            .await?
+    {
+        dao::insert_user_object(db, user_id, existing.id).await?;
+        return Ok(MergeResult {
+            object_id: existing.uuid,
+            storage_path: existing.storage_path,
+            size: total_written,
+            md5: computed_md5,
+        });
+    }
+
     let object_id = Uuid::new_v4();
     let extension = path::get_extension(file_name);
     let now = chrono::Utc::now();
@@ -659,8 +716,6 @@ pub async fn direct_upload_bytes(
         tracing::warn!(path = %parent.display(), error = %e, "fsync parent dir after rename failed");
     }
 
-    let computed_md5 = format!("{:x}", Md5::digest(data));
-
     let effective_content_type: Option<String> = content_type
         .map(|s| s.to_string())
         .or_else(|| detect_mime_from_extension(file_name));
@@ -676,7 +731,6 @@ pub async fn direct_upload_bytes(
             (0i64, 0i64, String::new())
         };
 
-    let total_written = data.len() as u64;
     let uuid_str = object_id.to_string();
     let storage_path_str = output_path.to_string_lossy().to_string();
 

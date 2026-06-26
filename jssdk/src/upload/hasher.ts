@@ -12,19 +12,21 @@ export async function computeChunkMd5s(
   chunkSize: number,
   totalChunks: number,
   signal?: AbortSignal,
-): Promise<[string, string[]]> {
+): Promise<[string, string[], string]> {
   const chunkMd5s: string[] = []
+  const rawSpark = new SparkMD5.ArrayBuffer()
   for (let i = 0; i < totalChunks; i++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     const start = i * chunkSize
     const end = Math.min(start + chunkSize, file.size)
     const data = await readFileSlice(file, start, end)
     chunkMd5s.push(md5ArrayBuffer(data))
+    rawSpark.append(data)
   }
 
   const spark = new SparkMD5()
   for (const md5 of chunkMd5s) {
     spark.append(md5)
   }
-  return [spark.end(), chunkMd5s]
+  return [spark.end(), chunkMd5s, rawSpark.end()]
 }

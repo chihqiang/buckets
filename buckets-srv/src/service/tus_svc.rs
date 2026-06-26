@@ -295,6 +295,26 @@ async fn complete_upload(
 
     dao::set_task_md5(db, task_id, &computed_md5).await?;
 
+    // 全局去重：相同 MD5 + size 则复用已有对象
+    if let Some(existing) =
+        dao::find_object_by_md5(db, &computed_md5, constant::DEFAULT_BUCKET, file_len as i64)
+            .await?
+    {
+        let now = chrono::Utc::now();
+        upload_tasks::Entity::update_many()
+            .filter(upload_tasks::Column::Uuid.eq(task_id.to_string()))
+            .set(upload_tasks::ActiveModel {
+                status: Set(TaskStatus::Completed.as_str().to_string()),
+                updated_at: Set(now),
+                ..Default::default()
+            })
+            .exec(db)
+            .await?;
+        dao::insert_user_object(db, user_id, existing.id).await?;
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        return Ok(());
+    }
+
     let now = chrono::Utc::now();
 
     let output_path = path::get_object_storage_path(

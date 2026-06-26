@@ -118,11 +118,14 @@ impl AppConfig {
                 .collect()
         };
 
-        let super_admin_ids: Vec<i64> = std::env::var(constant::ENV_SUPER_ADMIN_IDS)
-            .unwrap_or_default()
-            .split(',')
-            .filter_map(|s| s.trim().parse::<i64>().ok())
-            .collect();
+        let super_admin_ids: Vec<i64> = {
+            let raw = std::env::var(constant::ENV_SUPER_ADMIN_IDS).unwrap_or_default();
+            if raw.is_empty() {
+                vec![constant::DEFAULT_SUPER_ADMIN_ID]
+            } else {
+                raw.split(',').filter_map(|s| s.trim().parse::<i64>().ok()).collect()
+            }
+        };
 
         let host = env_str(constant::ENV_HOST, constant::DEFAULT_HOST);
         let port = env_parse(constant::ENV_PORT, constant::DEFAULT_PORT);

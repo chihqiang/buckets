@@ -42,6 +42,9 @@ pub const CREDENTIAL_SEPARATOR: &str = ":";
 /// 认证中间件挂载在 `/api/v1`，因此路径是前缀去除后的部分。
 pub const AUTH_SKIP_PATHS: &[&str] = &["/auth/login", "/auth/refresh"];
 
+/// 超级管理员默认 ID（当 ENV_SUPER_ADMIN_IDS 未设置时兜底）。
+pub const DEFAULT_SUPER_ADMIN_ID: i64 = 1;
+
 // ============================================================================
 // 超级管理员——需要管理员权限的路径
 // ============================================================================

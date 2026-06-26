@@ -44,21 +44,22 @@ export class ChunkUploader {
     const parallel = Math.min(options?.parallel || 3, MAX_PARALLEL)
     const totalChunks = Math.ceil(file.size / chunkSize)
 
-    const [fileMd5, chunkMd5s] = await computeChunkMd5s(file, chunkSize, totalChunks, signal)
+    const [merkleMd5, chunkMd5s, rawFileMd5] = await computeChunkMd5s(file, chunkSize, totalChunks, signal)
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
     const stsResult = await this.sts({
       file_name: file.name,
       file_size: file.size,
-      file_md5: fileMd5,
+      file_md5: rawFileMd5,
       chunk_size: chunkSize,
     })
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
+    // precheck 用原始文件 MD5 去重（与直传/TUS 一致）
     const precheckResult = await this.precheck({
       file_name: file.name,
       file_size: file.size,
-      file_md5: fileMd5,
+      file_md5: rawFileMd5,
       chunk_size: chunkSize,
     })
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
@@ -86,7 +87,7 @@ export class ChunkUploader {
     await this.merge({
       task_id: precheckResult.task_id,
       file_name: file.name,
-      file_md5: fileMd5,
+      file_md5: merkleMd5,
       file_size: file.size,
       content_type: file.type || undefined,
     })
