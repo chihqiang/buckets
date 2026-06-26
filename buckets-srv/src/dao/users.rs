@@ -21,7 +21,7 @@ pub async fn list_users(
     page: u64,
     page_size: u64,
 ) -> Result<(Vec<UserRow>, i64), AppError> {
-    let offset = (page - 1) * page_size;
+    let offset = page.saturating_sub(1) * page_size;
 
     let total = users::Entity::find().count(db).await?;
 

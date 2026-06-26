@@ -2,9 +2,6 @@
 //!
 //! 每个表都有自己的实体模块和 `DeriveEntityModel`。`Model`
 //! 结构体被重新导出为 `User`、`ObjectMeta`、`UploadTask` 以向后兼容现有服务代码。
-//!
-//! 状态字段在 MySQL/MariaDB 中存储为 VARCHAR。我们使用 `String` 作为
-//! 数据库列类型，并提供枚举转换辅助函数以保证类型安全。
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -60,8 +57,6 @@ pub mod objects {
         pub image_width: i64,
         pub image_height: i64,
         pub image_type: String,
-        #[serde(skip)]
-        pub status: String,
         pub created_at: DateTimeUtc,
         pub updated_at: DateTimeUtc,
     }
@@ -237,78 +232,7 @@ impl std::fmt::Display for TaskStatusColumn {
     }
 }
 
-/// 类型安全的对象生命周期状态枚举。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ObjectStatus {
-    Active,
-    Deleted,
-    Archived,
-}
 
-impl ObjectStatus {
-    /// 返回 snake_case 字符串表示。
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ObjectStatus::Active => "active",
-            ObjectStatus::Deleted => "deleted",
-            ObjectStatus::Archived => "archived",
-        }
-    }
-
-    /// 从数据库字符串值解析。
-    pub fn from_db_str(s: &str) -> Self {
-        match s {
-            "active" => ObjectStatus::Active,
-            "deleted" => ObjectStatus::Deleted,
-            "archived" => ObjectStatus::Archived,
-            _ => ObjectStatus::Active,
-        }
-    }
-}
-
-impl std::fmt::Display for ObjectStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl std::str::FromStr for ObjectStatus {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| e.to_string())
-    }
-}
-
-/// 围绕 ObjectStatus 的新类型包装，与 sea-orm VARCHAR 列兼容。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(into = "String", from = "String")]
-pub struct ObjectStatusColumn(pub ObjectStatus);
-
-impl From<ObjectStatus> for ObjectStatusColumn {
-    fn from(v: ObjectStatus) -> Self {
-        ObjectStatusColumn(v)
-    }
-}
-
-impl From<ObjectStatusColumn> for String {
-    fn from(v: ObjectStatusColumn) -> Self {
-        v.0.as_str().to_string()
-    }
-}
-
-impl From<String> for ObjectStatusColumn {
-    fn from(s: String) -> Self {
-        ObjectStatusColumn(ObjectStatus::from_db_str(&s))
-    }
-}
-
-impl std::fmt::Display for ObjectStatusColumn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
 
 // ============================================================================
 // UploadTask 辅助函数（保持不变）
@@ -337,13 +261,4 @@ impl UploadTask {
     }
 }
 
-// ============================================================================
-// ObjectMeta 辅助函数（保持不变）
-// ============================================================================
 
-impl ObjectMeta {
-    /// 将状态作为 ObjectStatus 枚举获取。
-    pub fn status_enum(&self) -> ObjectStatus {
-        ObjectStatus::from_db_str(&self.status)
-    }
-}

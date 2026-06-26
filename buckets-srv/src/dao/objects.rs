@@ -3,7 +3,7 @@ use buckets_common::error::AppError;
 use buckets_common::model::db::{ObjectMeta, objects, user_objects};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, Order,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 
 /// 通过 MD5 + file_size 查找对象，用于全局去重（不限特定用户）。
@@ -17,7 +17,6 @@ pub async fn find_object_by_md5(
         .filter(objects::Column::Md5.eq(md5))
         .filter(objects::Column::Size.eq(file_size))
         .filter(objects::Column::Bucket.eq(bucket))
-        .filter(objects::Column::Status.eq("active"))
         .one(db)
         .await
         .map_err(Into::into)
@@ -33,24 +32,6 @@ pub async fn find_object_by_uuid(
         .one(db)
         .await
         .map_err(Into::into)
-}
-
-/// 将对象标记为已删除（软删除——将状态设置为'deleted'）。
-pub async fn soft_delete_object(
-    db: &DatabaseConnection,
-    uuid: &str,
-) -> Result<(), AppError> {
-    let now = Utc::now();
-    objects::Entity::update_many()
-        .filter(objects::Column::Uuid.eq(uuid))
-        .set(objects::ActiveModel {
-            status: Set("deleted".to_string()),
-            updated_at: Set(now),
-            ..Default::default()
-        })
-        .exec(db)
-        .await?;
-    Ok(())
 }
 
 /// 通过对象的 UUID 检查用户是否与该对象关联（所有者检查）。
@@ -102,31 +83,40 @@ pub async fn insert_user_object<C: ConnectionTrait>(
     Ok(())
 }
 
-/// 通过对象的 UUID 移除用户-对象关联。如果是最后一个所有者则返回 true。
-pub async fn remove_user_object_by_uuid(
+/// 通过对象的 UUID 移除用户-对象关联。
+/// 如果是最后一个所有者，标记对象为已删除。
+/// 所有权检查在事务内部执行，避免 TOCTOU 问题。
+/// 返回 `Err(NotFound)`（对象不存在）或 `Err(Forbidden)`（不属于该用户）。
+pub async fn delete_user_object(
     db: &DatabaseConnection,
     user_id: i64,
     uuid: &str,
-) -> Result<bool, AppError> {
+) -> Result<(), AppError> {
+    let txn = db.begin().await?;
+
     let obj = objects::Entity::find()
         .filter(objects::Column::Uuid.eq(uuid))
-        .one(db)
+        .one(&txn)
+        .await?
+        .ok_or_else(|| AppError::NotFound("object not found".into()))?;
+
+    let owned = user_objects::Entity::find()
+        .filter(user_objects::Column::UserId.eq(user_id))
+        .filter(user_objects::Column::ObjectId.eq(obj.id))
+        .count(&txn)
         .await?;
-    match obj {
-        Some(o) => {
-            user_objects::Entity::delete_many()
-                .filter(user_objects::Column::UserId.eq(user_id))
-                .filter(user_objects::Column::ObjectId.eq(o.id))
-                .exec(db)
-                .await?;
-            let count = user_objects::Entity::find()
-                .filter(user_objects::Column::ObjectId.eq(o.id))
-                .count(db)
-                .await?;
-            Ok(count == 0)
-        }
-        None => Ok(false),
+    if owned == 0 {
+        return Err(AppError::Forbidden("object does not belong to user".into()));
     }
+
+    user_objects::Entity::delete_many()
+        .filter(user_objects::Column::UserId.eq(user_id))
+        .filter(user_objects::Column::ObjectId.eq(obj.id))
+        .exec(&txn)
+        .await?;
+
+    txn.commit().await?;
+    Ok(())
 }
 
 /// 通过对象的自增 ID 移除用户-对象关联。返回是否实际删除了记录。
@@ -160,7 +150,6 @@ pub struct ObjectRow {
     pub image_width: i64,
     pub image_height: i64,
     pub image_type: String,
-    pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -181,7 +170,6 @@ impl From<ObjectMeta> for ObjectRow {
             image_width: o.image_width,
             image_height: o.image_height,
             image_type: o.image_type,
-            status: o.status,
             created_at: o.created_at,
             updated_at: o.updated_at,
         }
@@ -195,7 +183,7 @@ pub async fn list_objects_by_user(
     page: u64,
     page_size: u64,
 ) -> Result<(Vec<ObjectRow>, i64), AppError> {
-    let offset = (page - 1) * page_size;
+    let offset = page.saturating_sub(1) * page_size;
 
     let mut subq = Query::select();
     subq.column(user_objects::Column::ObjectId)
@@ -227,7 +215,7 @@ pub async fn list_all_objects(
     page: u64,
     page_size: u64,
 ) -> Result<(Vec<ObjectRow>, i64), AppError> {
-    let offset = (page - 1) * page_size;
+    let offset = page.saturating_sub(1) * page_size;
 
     let mut subq = Query::select();
     subq.column(user_objects::Column::ObjectId)

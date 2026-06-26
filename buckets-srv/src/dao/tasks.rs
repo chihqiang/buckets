@@ -221,10 +221,12 @@ pub async fn update_tus_offset(
     status: Option<&str>,
 ) -> Result<(), AppError> {
     let now = Utc::now();
-    let mut active: upload_tasks::ActiveModel = Default::default();
-    active.current_offset = Set(new_offset);
-    active.last_activity_at = Set(Some(now.timestamp()));
-    active.updated_at = Set(now);
+    let mut active = upload_tasks::ActiveModel {
+        current_offset: Set(new_offset),
+        last_activity_at: Set(Some(now.timestamp())),
+        updated_at: Set(now),
+        ..Default::default()
+    };
     if let Some(s) = status {
         active.status = Set(s.to_string());
     }

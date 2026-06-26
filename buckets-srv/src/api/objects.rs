@@ -37,7 +37,6 @@ fn into_object_info(f: ObjectRow) -> ObjectInfo {
         image_width: f.image_width,
         image_height: f.image_height,
         image_type: f.image_type,
-        status: f.status,
         created_at: f.created_at,
         updated_at: f.updated_at,
     }

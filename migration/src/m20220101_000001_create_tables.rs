@@ -153,13 +153,6 @@ impl MigrationTrait for Migration {
                             .comment("图片类型"),
                     )
                     .col(
-                        ColumnDef::new(Objects::Status)
-                            .string_len(32)
-                            .not_null()
-                            .default("active")
-                            .comment("状态：active / deleted"),
-                    )
-                    .col(
                         ColumnDef::new(Objects::UploadMethod)
                             .string_len(32)
                             .not_null()
@@ -505,7 +498,6 @@ enum Objects {
     ImageWidth,
     ImageHeight,
     ImageType,
-    Status,
     UploadMethod,
     CreatedAt,
     UpdatedAt,

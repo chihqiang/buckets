@@ -17,7 +17,7 @@ use md5::{Digest, Md5};
 use buckets_common::constant;
 use buckets_common::error::AppError;
 use buckets_common::model::api::{MergeResult, PrecheckResult};
-use buckets_common::model::db::{ObjectStatus, TaskStatus};
+use buckets_common::model::db::TaskStatus;
 use buckets_common::model::db::{objects, upload_tasks};
 use buckets_common::utils::{image, path, validate};
 use sea_orm::{
@@ -369,7 +369,6 @@ pub async fn merge(
         image_width: Set(image_width),
         image_height: Set(image_height),
         image_type: Set(image_type_str.clone()),
-        status: Set(ObjectStatus::Active.as_str().to_string()),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()
@@ -746,7 +745,6 @@ pub async fn direct_upload_bytes(
         image_width: Set(image_width),
         image_height: Set(image_height),
         image_type: Set(image_type_str.clone()),
-        status: Set(ObjectStatus::Active.as_str().to_string()),
         created_at: Set(now),
         updated_at: Set(now),
         ..Default::default()

@@ -40,21 +40,13 @@ pub async fn get_object_info(
 /// 通过 ID 软删除对象（通过 user_objects 限定所有者范围）。
 /// 如果用户是最后一个所有者，对象被标记为已删除。
 /// 如果还有其他所有者，仅移除用户-对象关联。
+///
+/// 所有权检查、关联移除和软删除在同一个事务中执行，确保原子性。
 pub async fn delete_object(
     state: State<AppState>,
     Extension(uid): Extension<UserId>,
     Path(object_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, AppError> {
-    // 通过 user_objects 关联表检查所有权
-    if !dao::check_user_owns_object_by_uuid(&state.db, uid.0, &object_id).await? {
-        return Err(AppError::Forbidden("object does not belong to user".into()));
-    }
-
-    // 移除用户-对象关联；如果是最后一个所有者，软删除对象
-    let is_last = dao::remove_user_object_by_uuid(&state.db, uid.0, &object_id).await?;
-    if is_last {
-        dao::soft_delete_object(&state.db, &object_id).await?;
-    }
-
+    dao::delete_user_object(&state.db, uid.0, &object_id).await?;
     Ok(api_ok(()))
 }

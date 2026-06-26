@@ -227,7 +227,6 @@ pub struct ObjectInfo {
     pub image_width: i64,
     pub image_height: i64,
     pub image_type: String,
-    pub status: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }

@@ -4,7 +4,7 @@ use chrono::Datelike;
 use md5::{Digest, Md5};
 use buckets_common::constant;
 use buckets_common::error::AppError;
-use buckets_common::model::db::{ObjectStatus, TaskStatus, UploadTask, objects, upload_tasks};
+use buckets_common::model::db::{TaskStatus, UploadTask, objects, upload_tasks};
 use buckets_common::utils::{image, path};
 use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, TransactionTrait,
@@ -379,7 +379,6 @@ async fn complete_upload(
         image_width: Set(image_width),
         image_height: Set(image_height),
         image_type: Set(image_type_str),
-        status: Set(ObjectStatus::Active.as_str().to_string()),
         upload_method: Set(constant::TUS_UPLOAD_METHOD.to_string()),
         created_at: Set(now),
         updated_at: Set(now),
